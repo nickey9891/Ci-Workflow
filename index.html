@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -15,6 +16,8 @@
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: #060d18; }
   ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 2px; }
+  optgroup { background: #060d18; color: #60a5fa; font-weight: bold; }
+  option { background: #060d18; color: #c8dcea; font-weight: normal; }
 </style>
 </head>
 <body>
@@ -23,14 +26,35 @@
 const { useState, useEffect } = React;
 
 // ── Storage ───────────────────────────────────────────────────────────────────
-const STORAGE_KEY = "ci_workflow_v2";
-const loadData = () => { try { const d = localStorage.getItem(STORAGE_KEY); return d ? JSON.parse(d) : null; } catch(_){ return null; } };
-const saveData = (cases, caseTasks) => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ cases, caseTasks })); } catch(_){} };
+const STORAGE_KEY = "ci_workflow_v3";
+const LEGACY_KEY  = "ci_workflow_v2";
+const loadData = () => {
+  try {
+    const d = localStorage.getItem(STORAGE_KEY);
+    if (d) return JSON.parse(d);
+    // Migrate from v2 if present
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy) {
+      const parsed = JSON.parse(legacy);
+      const cases = (parsed.cases || []).map(c => ({
+        ...c,
+        violations: c.violations || (c.violation ? [c.violation] : []),
+        tier: c.tier || "PRELIMINARY",
+        aiAnalysis: c.aiAnalysis || null,
+      }));
+      return { cases, caseTasks: parsed.caseTasks || {} };
+    }
+    return null;
+  } catch(_){ return null; }
+};
+const saveData = (cases, caseTasks) => {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ cases, caseTasks })); } catch(_){}
+};
 
 // ── CI Statute Database (preset element sets) ─────────────────────────────────
 const CI_STATUTES = {
   "18 U.S.C. § 794": {
-    label: "§ 794 — Gathering/Delivering Defense Info to Foreign Govt", threat: "ESPIONAGE",
+    label: "§ 794 — Gathering/Delivering Defense Info to Foreign Govt", threat: "ESPIONAGE", group: "ESPIONAGE & NATIONAL DEFENSE (CH. 37)",
     elements: [
       { name: "ELEMENT 1 — Communication with Foreign Government or Agent", color: "#ef4444", steps: [
         { text: "Identify all known/suspected communications with FIOs or foreign government actors", evidence: "Surveillance logs, call records, email headers, CCTV, travel manifests, pole cam footage", day: 1, phase: "IMMEDIATE" },
@@ -57,7 +81,7 @@ const CI_STATUTES = {
     ]
   },
   "18 U.S.C. § 793": {
-    label: "§ 793 — Espionage Act (Gathering, Transmitting, Losing NDI)", threat: "ESPIONAGE",
+    label: "§ 793 — Espionage Act (Gathering, Transmitting, Losing NDI)", threat: "ESPIONAGE", group: "ESPIONAGE & NATIONAL DEFENSE (CH. 37)",
     elements: [
       { name: "ELEMENT 1 — Authorized Access to NDI", color: "#ef4444", steps: [
         { text: "Obtain full clearance history and all SCI/SAP access authorizations for subject", evidence: "JPAS/DISS records, SCI access logs, SAP nomination records, FSO records", day: 1, phase: "IMMEDIATE" },
@@ -82,7 +106,7 @@ const CI_STATUTES = {
     ]
   },
   "18 U.S.C. § 951": {
-    label: "§ 951 — Undisclosed Agent of a Foreign Government", threat: "FIS OPERATION",
+    label: "§ 951 — Undisclosed Agent of a Foreign Government", threat: "FIS OPERATION", group: "FOREIGN RELATIONS & AGENTS (CH. 45)",
     elements: [
       { name: "ELEMENT 1 — Acting at Direction/Control of Foreign Government", color: "#ef4444", steps: [
         { text: "Establish subject acted at direction, control, or request of a foreign government or official", evidence: "HUMINT reporting, FISA collection, surveillance of FIO meetings, co-conspirator statements", day: 1, phase: "IMMEDIATE" },
@@ -107,7 +131,7 @@ const CI_STATUTES = {
     ]
   },
   "18 U.S.C. § 1030": {
-    label: "§ 1030 — CFAA / Unauthorized Computer Access (Cyber CI)", threat: "CYBER CI",
+    label: "§ 1030 — CFAA / Unauthorized Computer Access (Cyber CI)", threat: "CYBER CI", group: "FRAUD & FALSE STATEMENTS",
     elements: [
       { name: "ELEMENT 1 — Unauthorized Access or Exceeding Authorized Access", color: "#06b6d4", steps: [
         { text: "Pull all system access logs for affected network — identify unauthorized sessions", evidence: "SIEM logs, EDR telemetry, firewall logs, VPN auth records, UEBA alerts, PAM logs", day: 1, phase: "IMMEDIATE" },
@@ -133,7 +157,7 @@ const CI_STATUTES = {
     ]
   },
   "18 U.S.C. § 371": {
-    label: "§ 371 — Conspiracy (CI / FIS Direction Context)", threat: "FIS CONSPIRACY",
+    label: "§ 371 — Conspiracy to Commit Offense or Defraud U.S.", threat: "FIS CONSPIRACY", group: "CONSPIRACY & INCHOATE",
     elements: [
       { name: "ELEMENT 1 — Agreement Between Two or More Persons", color: "#a855f7", steps: [
         { text: "Identify all co-conspirators — U.S. persons, FIOs, and foreign government intermediaries", evidence: "HUMINT reporting, surveillance of meetings, intercepted communications, financial links", day: 1, phase: "IMMEDIATE" },
@@ -158,7 +182,7 @@ const CI_STATUTES = {
     ]
   },
   "50 U.S.C. § 3121": {
-    label: "50 U.S.C. § 3121 — Intelligence Identities Protection Act", threat: "IDENTITY EXPOSURE",
+    label: "50 U.S.C. § 3121 — Intelligence Identities Protection Act", threat: "IDENTITY EXPOSURE", group: "TITLE 50 — WAR & NATIONAL DEFENSE",
     elements: [
       { name: "ELEMENT 1 — Authorized Access Identifying a Covert Agent", color: "#ef4444", steps: [
         { text: "Confirm subject had authorized access to classified information identifying the covert agent", evidence: "Clearance records, program access records, SCI compartment logs, need-to-know documentation", day: 1, phase: "IMMEDIATE" },
@@ -183,7 +207,7 @@ const CI_STATUTES = {
     ]
   },
   "EXPORT": {
-    label: "Export Control Violations (EAR/ITAR/OFAC — CI Context)", threat: "TECH TRANSFER",
+    label: "Export Control Violations (EAR/ITAR/OFAC — CI Context)", threat: "TECH TRANSFER", group: "TITLE 50 — WAR & NATIONAL DEFENSE",
     elements: [
       { name: "ELEMENT 1 — Controlled Item or Technology", color: "#06b6d4", steps: [
         { text: "Identify the specific item, technology, or technical data alleged to be exported", evidence: "ECCN from Commerce, USML category from State/DDTC, physical item documentation", day: 1, phase: "IMMEDIATE" },
@@ -208,7 +232,7 @@ const CI_STATUTES = {
     ]
   },
   "18 U.S.C. § 956": {
-    label: "§ 956 — Conspiracy to Kill/Kidnap/Injure Persons Abroad", threat: "TRANSNATIONAL THREAT",
+    label: "§ 956 — Conspiracy to Kill/Kidnap/Injure Persons Abroad", threat: "TRANSNATIONAL THREAT", group: "FOREIGN RELATIONS & AGENTS (CH. 45)",
     elements: [
       { name: "ELEMENT 1 — Conspiracy Agreement", color: "#ef4444", steps: [
         { text: "Identify all co-conspirators — subject, co-actors, and any foreign government facilitators", evidence: "HUMINT reporting, surveillance logs, intercepted communications, financial links, source reporting", day: 1, phase: "IMMEDIATE" },
@@ -237,6 +261,155 @@ const CI_STATUTES = {
     ]
   },
 };
+
+// ── Additional curated CI statutes (use universal element fallback) ──────────
+// These add to the dropdown without bloating the file with element sets.
+const CI_STATUTES_LITE = [
+  // Espionage & National Defense (Ch. 37)
+  ["18 U.S.C. § 792",  "§ 792 — Harboring or Concealing Persons",                "ESPIONAGE",       "ESPIONAGE & NATIONAL DEFENSE (CH. 37)"],
+  ["18 U.S.C. § 795",  "§ 795 — Photographing/Sketching Defense Installations",  "ESPIONAGE",       "ESPIONAGE & NATIONAL DEFENSE (CH. 37)"],
+  ["18 U.S.C. § 796",  "§ 796 — Use of Aircraft for Photographing Defense",      "ESPIONAGE",       "ESPIONAGE & NATIONAL DEFENSE (CH. 37)"],
+  ["18 U.S.C. § 797",  "§ 797 — Publication of Photos of Defense Installations", "ESPIONAGE",       "ESPIONAGE & NATIONAL DEFENSE (CH. 37)"],
+  ["18 U.S.C. § 798",  "§ 798 — Disclosure of Classified COMINT",                "ESPIONAGE",       "ESPIONAGE & NATIONAL DEFENSE (CH. 37)"],
+
+  // Foreign Relations (Ch. 45)
+  ["18 U.S.C. § 952",  "§ 952 — Diplomatic Codes and Correspondence",            "FIS OPERATION",   "FOREIGN RELATIONS & AGENTS (CH. 45)"],
+  ["18 U.S.C. § 953",  "§ 953 — Logan Act (Private Foreign Correspondence)",     "FIS OPERATION",   "FOREIGN RELATIONS & AGENTS (CH. 45)"],
+  ["18 U.S.C. § 954",  "§ 954 — False Statements Influencing Foreign Govt",      "FIS OPERATION",   "FOREIGN RELATIONS & AGENTS (CH. 45)"],
+  ["18 U.S.C. § 957",  "§ 957 — Possession of Property in Aid of Foreign Govt",  "FIS OPERATION",   "FOREIGN RELATIONS & AGENTS (CH. 45)"],
+  ["18 U.S.C. § 960",  "§ 960 — Expedition Against Friendly Nation",             "FIS OPERATION",   "FOREIGN RELATIONS & AGENTS (CH. 45)"],
+
+  // Sabotage (Ch. 105)
+  ["18 U.S.C. § 2151", "§ 2151 — Sabotage Definitions",                          "ESPIONAGE",       "SABOTAGE (CH. 105)"],
+  ["18 U.S.C. § 2152", "§ 2152 — Fortifications, Harbor Defenses",               "ESPIONAGE",       "SABOTAGE (CH. 105)"],
+  ["18 U.S.C. § 2153", "§ 2153 — Destruction of War Material",                   "ESPIONAGE",       "SABOTAGE (CH. 105)"],
+  ["18 U.S.C. § 2154", "§ 2154 — Production of Defective War Material",          "ESPIONAGE",       "SABOTAGE (CH. 105)"],
+  ["18 U.S.C. § 2155", "§ 2155 — Destruction of National Defense Materials",     "ESPIONAGE",       "SABOTAGE (CH. 105)"],
+  ["18 U.S.C. § 2156", "§ 2156 — Production of Defective National Defense Mat'l","ESPIONAGE",       "SABOTAGE (CH. 105)"],
+
+  // Treason / Sedition (Ch. 115)
+  ["18 U.S.C. § 2381", "§ 2381 — Treason",                                       "ESPIONAGE",       "TREASON & SEDITION (CH. 115)"],
+  ["18 U.S.C. § 2382", "§ 2382 — Misprision of Treason",                         "ESPIONAGE",       "TREASON & SEDITION (CH. 115)"],
+  ["18 U.S.C. § 2383", "§ 2383 — Rebellion or Insurrection",                     "ESPIONAGE",       "TREASON & SEDITION (CH. 115)"],
+  ["18 U.S.C. § 2384", "§ 2384 — Seditious Conspiracy",                          "FIS CONSPIRACY",  "TREASON & SEDITION (CH. 115)"],
+  ["18 U.S.C. § 2385", "§ 2385 — Advocating Overthrow of Government",            "ESPIONAGE",       "TREASON & SEDITION (CH. 115)"],
+  ["18 U.S.C. § 2387", "§ 2387 — Activities Affecting Armed Forces",             "ESPIONAGE",       "TREASON & SEDITION (CH. 115)"],
+  ["18 U.S.C. § 2388", "§ 2388 — Activities Affecting Armed Forces During War",  "ESPIONAGE",       "TREASON & SEDITION (CH. 115)"],
+  ["18 U.S.C. § 2389", "§ 2389 — Recruiting for Foreign Service",                "FIS OPERATION",   "TREASON & SEDITION (CH. 115)"],
+  ["18 U.S.C. § 2390", "§ 2390 — Enlistment to Serve Against the U.S.",          "FIS OPERATION",   "TREASON & SEDITION (CH. 115)"],
+
+  // Economic Espionage (Ch. 90)
+  ["18 U.S.C. § 1831", "§ 1831 — Economic Espionage (Foreign Benefit)",          "TECH TRANSFER",   "ECONOMIC ESPIONAGE & TRADE SECRETS (CH. 90)"],
+  ["18 U.S.C. § 1832", "§ 1832 — Theft of Trade Secrets",                        "TECH TRANSFER",   "ECONOMIC ESPIONAGE & TRADE SECRETS (CH. 90)"],
+  ["18 U.S.C. § 1839", "§ 1839 — Trade Secret Definitions",                      "TECH TRANSFER",   "ECONOMIC ESPIONAGE & TRADE SECRETS (CH. 90)"],
+
+  // Terrorism (Ch. 113B)
+  ["18 U.S.C. § 2332",  "§ 2332 — Criminal Penalties (Terrorism)",               "TRANSNATIONAL THREAT", "TERRORISM (CH. 113B)"],
+  ["18 U.S.C. § 2332a", "§ 2332a — Weapons of Mass Destruction",                 "TRANSNATIONAL THREAT", "TERRORISM (CH. 113B)"],
+  ["18 U.S.C. § 2332b", "§ 2332b — Acts of Terrorism Transcending Boundaries",   "TRANSNATIONAL THREAT", "TERRORISM (CH. 113B)"],
+  ["18 U.S.C. § 2339A", "§ 2339A — Material Support to Terrorists",              "TRANSNATIONAL THREAT", "TERRORISM (CH. 113B)"],
+  ["18 U.S.C. § 2339B", "§ 2339B — Material Support to FTOs",                    "TRANSNATIONAL THREAT", "TERRORISM (CH. 113B)"],
+  ["18 U.S.C. § 2339C", "§ 2339C — Financing of Terrorism",                      "TRANSNATIONAL THREAT", "TERRORISM (CH. 113B)"],
+  ["18 U.S.C. § 2339D", "§ 2339D — Receiving Military Training from FTO",        "TRANSNATIONAL THREAT", "TERRORISM (CH. 113B)"],
+
+  // Money Laundering & Financial
+  ["18 U.S.C. § 1956", "§ 1956 — Money Laundering",                              "CI",              "MONEY LAUNDERING & FINANCIAL"],
+  ["18 U.S.C. § 1957", "§ 1957 — Monetary Transactions in Criminally Derived Property","CI",       "MONEY LAUNDERING & FINANCIAL"],
+  ["18 U.S.C. § 1960", "§ 1960 — Unlicensed Money Transmitting Business",        "CI",              "MONEY LAUNDERING & FINANCIAL"],
+  ["18 U.S.C. § 1341", "§ 1341 — Mail Fraud",                                    "CI",              "MONEY LAUNDERING & FINANCIAL"],
+  ["18 U.S.C. § 1343", "§ 1343 — Wire Fraud",                                    "CI",              "MONEY LAUNDERING & FINANCIAL"],
+  ["18 U.S.C. § 1344", "§ 1344 — Bank Fraud",                                    "CI",              "MONEY LAUNDERING & FINANCIAL"],
+  ["18 U.S.C. § 1349", "§ 1349 — Conspiracy/Attempt (Fraud Chapters)",           "CI",              "MONEY LAUNDERING & FINANCIAL"],
+
+  // Fraud & False Statements
+  ["18 U.S.C. § 1001", "§ 1001 — False Statements",                              "CI",              "FRAUD & FALSE STATEMENTS"],
+  ["18 U.S.C. § 1015", "§ 1015 — False Statements re: Naturalization/Citizenship","CI",             "FRAUD & FALSE STATEMENTS"],
+  ["18 U.S.C. § 1028", "§ 1028 — Identification Fraud",                          "CI",              "FRAUD & FALSE STATEMENTS"],
+  ["18 U.S.C. § 1028A","§ 1028A — Aggravated Identity Theft",                    "CI",              "FRAUD & FALSE STATEMENTS"],
+  ["18 U.S.C. § 1029", "§ 1029 — Access Device Fraud",                           "CYBER CI",        "FRAUD & FALSE STATEMENTS"],
+  ["18 U.S.C. § 1546", "§ 1546 — Visa, Permit, ID Document Fraud",               "CI",              "FRAUD & FALSE STATEMENTS"],
+
+  // Obstruction
+  ["18 U.S.C. § 1503", "§ 1503 — Influencing Officer/Juror",                     "CI",              "OBSTRUCTION"],
+  ["18 U.S.C. § 1505", "§ 1505 — Obstruction of Agency Proceedings",             "CI",              "OBSTRUCTION"],
+  ["18 U.S.C. § 1510", "§ 1510 — Obstruction of Criminal Investigations",        "CI",              "OBSTRUCTION"],
+  ["18 U.S.C. § 1512", "§ 1512 — Witness Tampering",                             "CI",              "OBSTRUCTION"],
+  ["18 U.S.C. § 1519", "§ 1519 — Destruction of Records in Federal Investigation","CI",             "OBSTRUCTION"],
+
+  // Conspiracy & Inchoate
+  ["18 U.S.C. § 2",    "§ 2 — Aiding and Abetting",                              "CI",              "CONSPIRACY & INCHOATE"],
+  ["18 U.S.C. § 3",    "§ 3 — Accessory After the Fact",                         "CI",              "CONSPIRACY & INCHOATE"],
+  ["18 U.S.C. § 4",    "§ 4 — Misprision of Felony",                             "CI",              "CONSPIRACY & INCHOATE"],
+  ["18 U.S.C. § 372",  "§ 372 — Conspiracy to Impede Officer",                   "CI",              "CONSPIRACY & INCHOATE"],
+
+  // Smuggling, Border, Contraband
+  ["18 U.S.C. § 545",  "§ 545 — Smuggling Goods Into U.S.",                      "CI",              "SMUGGLING & BORDER"],
+  ["18 U.S.C. § 554",  "§ 554 — Smuggling Goods From U.S.",                      "TECH TRANSFER",   "SMUGGLING & BORDER"],
+  ["18 U.S.C. § 1425", "§ 1425 — Procurement of Citizenship Unlawfully",         "CI",              "SMUGGLING & BORDER"],
+  ["18 U.S.C. § 1542", "§ 1542 — False Statement in Passport Application",       "CI",              "SMUGGLING & BORDER"],
+  ["18 U.S.C. § 1543", "§ 1543 — Forgery of Passport",                           "CI",              "SMUGGLING & BORDER"],
+
+  // RICO
+  ["18 U.S.C. § 1961", "§ 1961-1968 — RICO",                                     "FIS CONSPIRACY",  "RICO"],
+
+  // Title 22 — Foreign Relations
+  ["22 U.S.C. § 611",  "22 U.S.C. § 611 et seq. — FARA",                         "FIS OPERATION",   "TITLE 22 — FOREIGN RELATIONS"],
+  ["22 U.S.C. § 2778", "22 U.S.C. § 2778 — Arms Export Control Act (AECA)",      "TECH TRANSFER",   "TITLE 22 — FOREIGN RELATIONS"],
+  ["22 U.S.C. § 2780", "22 U.S.C. § 2780 — Transactions with State Sponsors",    "TECH TRANSFER",   "TITLE 22 — FOREIGN RELATIONS"],
+
+  // Title 50 — War & National Defense
+  ["50 U.S.C. § 1701", "50 U.S.C. § 1701-1708 — IEEPA",                          "TECH TRANSFER",   "TITLE 50 — WAR & NATIONAL DEFENSE"],
+  ["50 U.S.C. § 1801", "50 U.S.C. § 1801 et seq. — FISA",                        "FIS OPERATION",   "TITLE 50 — WAR & NATIONAL DEFENSE"],
+  ["50 U.S.C. § 4565", "50 U.S.C. § 4565 — CFIUS",                               "TECH TRANSFER",   "TITLE 50 — WAR & NATIONAL DEFENSE"],
+  ["50 U.S.C. § 4819", "50 U.S.C. § 4819 — Export Control Reform Act (ECRA)",    "TECH TRANSFER",   "TITLE 50 — WAR & NATIONAL DEFENSE"],
+
+  // Title 31 — BSA / Financial
+  ["31 U.S.C. § 5313", "31 U.S.C. § 5313 — CTR Reporting",                       "CI",              "TITLE 31 — BSA / FINANCIAL"],
+  ["31 U.S.C. § 5316", "31 U.S.C. § 5316 — CMIR Reporting",                      "CI",              "TITLE 31 — BSA / FINANCIAL"],
+  ["31 U.S.C. § 5318", "31 U.S.C. § 5318 — BSA Compliance / SAR",                "CI",              "TITLE 31 — BSA / FINANCIAL"],
+  ["31 U.S.C. § 5322", "31 U.S.C. § 5322 — BSA Criminal Penalties",              "CI",              "TITLE 31 — BSA / FINANCIAL"],
+  ["31 U.S.C. § 5324", "31 U.S.C. § 5324 — Structuring",                         "CI",              "TITLE 31 — BSA / FINANCIAL"],
+  ["31 U.S.C. § 5331", "31 U.S.C. § 5331 — Form 8300 Reporting",                 "CI",              "TITLE 31 — BSA / FINANCIAL"],
+  ["31 U.S.C. § 5332", "31 U.S.C. § 5332 — Bulk Cash Smuggling",                 "CI",              "TITLE 31 — BSA / FINANCIAL"],
+
+  // Title 8 — Immigration
+  ["8 U.S.C. § 1324",  "8 U.S.C. § 1324 — Bringing in/Harboring Aliens",         "CI",              "TITLE 8 — IMMIGRATION"],
+  ["8 U.S.C. § 1325",  "8 U.S.C. § 1325 — Improper Entry",                       "CI",              "TITLE 8 — IMMIGRATION"],
+  ["8 U.S.C. § 1326",  "8 U.S.C. § 1326 — Illegal Reentry",                      "CI",              "TITLE 8 — IMMIGRATION"],
+  ["8 U.S.C. § 1424",  "8 U.S.C. § 1424 — Naturalization Prohibitions",          "CI",              "TITLE 8 — IMMIGRATION"],
+
+  // Title 26 — Tax
+  ["26 U.S.C. § 7201", "26 U.S.C. § 7201 — Tax Evasion",                         "CI",              "TITLE 26 — TAX"],
+  ["26 U.S.C. § 7206", "26 U.S.C. § 7206 — Fraud and False Statements (Tax)",    "CI",              "TITLE 26 — TAX"],
+];
+
+// Merge lite statutes into the main database
+CI_STATUTES_LITE.forEach(([key, label, threat, group]) => {
+  if (!CI_STATUTES[key]) {
+    CI_STATUTES[key] = { label, threat, group, elements: null }; // null => use buildCustomElements
+  }
+});
+
+// Group order (preserves curated order in the dropdown)
+const GROUP_ORDER = [
+  "ESPIONAGE & NATIONAL DEFENSE (CH. 37)",
+  "FOREIGN RELATIONS & AGENTS (CH. 45)",
+  "SABOTAGE (CH. 105)",
+  "TREASON & SEDITION (CH. 115)",
+  "ECONOMIC ESPIONAGE & TRADE SECRETS (CH. 90)",
+  "TERRORISM (CH. 113B)",
+  "MONEY LAUNDERING & FINANCIAL",
+  "FRAUD & FALSE STATEMENTS",
+  "OBSTRUCTION",
+  "CONSPIRACY & INCHOATE",
+  "SMUGGLING & BORDER",
+  "RICO",
+  "TITLE 22 — FOREIGN RELATIONS",
+  "TITLE 50 — WAR & NATIONAL DEFENSE",
+  "TITLE 31 — BSA / FINANCIAL",
+  "TITLE 8 — IMMIGRATION",
+  "TITLE 26 — TAX",
+];
 
 // ── Universal fallback element set for any custom statute ─────────────────────
 const buildCustomElements = (statute) => [
@@ -274,36 +447,150 @@ const PHASE_RANGE = { IMMEDIATE:"DAY 1–3","WEEK 1":"DAY 4–7","WEEK 2":"DAY 8
 const PRIORITIES = ["CRITICAL","HIGH","MEDIUM","LOW"];
 const PCOL = { CRITICAL:"#ef4444",HIGH:"#f97316",MEDIUM:"#eab308",LOW:"#22c55e" };
 const THREAT_COL = { ESPIONAGE:"#ef4444","FIS OPERATION":"#f97316","CYBER CI":"#06b6d4","FIS CONSPIRACY":"#a855f7","IDENTITY EXPOSURE":"#ec4899","TECH TRANSFER":"#3b82f6","TRANSNATIONAL THREAT":"#f59e0b","CI":"#60a5fa" };
-const TABS = ["INTAKE","TASKS","BRIEFING"];
+const TIERS = ["PRELIMINARY","GUARDIAN","FULL"];
+const TIER_DESC = {
+  PRELIMINARY: "Allegation/info indicating possible criminal/NS threat. Limited methods, defined duration.",
+  GUARDIAN:    "Lead/threat resolution. Limited duration. Database/records, limited interviews.",
+  FULL:        "Articulable factual basis. Full methods authorized (with required approvals).",
+};
+const TIER_COL = { PRELIMINARY:"#eab308", GUARDIAN:"#06b6d4", FULL:"#ef4444" };
+const TABS = ["INTAKE","TASKS","BRIEFING","AI ANALYSIS"];
 
-const matchStatute = v => Object.keys(CI_STATUTES).find(k =>
-  v?.includes(k) || (k==="EXPORT" && (v?.toLowerCase().includes("export")||v?.includes("EAR")||v?.includes("ITAR")))
-);
+const buildTasks = (violations) => {
+  // violations: array of statute keys
+  const list = (Array.isArray(violations) ? violations : [violations]).filter(Boolean);
+  const all = [];
+  list.forEach(v => {
+    const def = CI_STATUTES[v];
+    const elements = (def && def.elements) ? def.elements : buildCustomElements(v || "Custom Statute");
+    elements.forEach((el, ei) => {
+      el.steps.forEach((s, si) => {
+        all.push({
+          ...s,
+          id: `${Date.now()}-${v.replace(/\W+/g,"_")}-${ei}-${si}-${Math.random().toString(36).slice(2,7)}`,
+          done: false,
+          elementName: list.length > 1 ? `[${v}] ${el.name}` : el.name,
+          elementColor: el.color,
+          elementIdx: ei,
+          statute: v,
+        });
+      });
+    });
+  });
+  return all;
+};
 
-const buildTasks = (violation) => {
-  const key = matchStatute(violation);
-  const elements = key ? CI_STATUTES[key].elements : buildCustomElements(violation || "Custom Statute");
-  return elements.flatMap((el,ei) => el.steps.map((s,si) => ({
-    ...s, id:`${Date.now()}-${ei}-${si}`, done:false,
-    elementName:el.name, elementColor:el.color, elementIdx:ei,
-  })));
+const primaryThreat = (violations) => {
+  if (!violations || !violations.length) return "CI";
+  // Pick highest-severity threat present
+  const order = ["ESPIONAGE","IDENTITY EXPOSURE","TRANSNATIONAL THREAT","FIS CONSPIRACY","FIS OPERATION","TECH TRANSFER","CYBER CI","CI"];
+  const threats = violations.map(v => CI_STATUTES[v]?.threat || "CI");
+  for (const t of order) if (threats.includes(t)) return t;
+  return "CI";
 };
 
 const SEED = [
-  { id:1, name:"CI-2024-001", subject:"FALCON", violation:"18 U.S.C. § 794", priority:"CRITICAL", sol:"2027-03-15", source:"HUMINT/SIGINT", status:"ACTIVE", notes:"PRC handler contact confirmed via FISA", threat:"ESPIONAGE" },
-  { id:2, name:"CI-2024-002", subject:"NIGHTSHADE", violation:"18 U.S.C. § 951", priority:"HIGH", sol:"2027-06-01", source:"SIGINT", status:"ACTIVE", notes:"FARA non-compliance confirmed, SVR nexus", threat:"FIS OPERATION" },
+  { id:1, name:"CI-2024-001", subject:"FALCON",     violations:["18 U.S.C. § 794"], priority:"CRITICAL", sol:"2027-03-15", source:"HUMINT/SIGINT", status:"ACTIVE", notes:"PRC handler contact confirmed via FISA",  threat:"ESPIONAGE",   tier:"FULL",        aiAnalysis:null },
+  { id:2, name:"CI-2024-002", subject:"NIGHTSHADE", violations:["18 U.S.C. § 951"], priority:"HIGH",     sol:"2027-06-01", source:"SIGINT",        status:"ACTIVE", notes:"FARA non-compliance confirmed, SVR nexus", threat:"FIS OPERATION", tier:"PRELIMINARY", aiAnalysis:null },
 ];
+
+// ── AI Analysis ───────────────────────────────────────────────────────────────
+async function generateAIAnalysis({ tier, violations, subject, source, notes, completedSteps, openSteps }) {
+  const statuteList = violations.map(v => `${v} — ${CI_STATUTES[v]?.label || v}`).join("\n");
+  const completedSummary = completedSteps.slice(0, 12).map(s => `✓ ${s.elementName}: ${s.text}`).join("\n") || "(none recorded)";
+  const openSummary = openSteps.slice(0, 12).map(s => `○ ${s.elementName}: ${s.text}`).join("\n") || "(none recorded)";
+
+  const systemPrompt = `You are a senior FBI Counterintelligence advisor producing decision-support analysis for a Special Agent. Output STRICT JSON only — no preamble, no markdown fences, no commentary outside the JSON object.
+
+You are familiar with the Attorney General's Guidelines for Domestic FBI Operations (AGG-Dom) and the Domestic Investigations and Operations Guide (DIOG) tier framework:
+- ASSESSMENT: lowest tier, no specific factual predication required, limited methods
+- PRELIMINARY INVESTIGATION: information/allegation indicating possible criminal or NS threat; most non-sensitive methods authorized; defined duration
+- GUARDIAN: lead/threat assessment, narrow scope, short duration, limited methods
+- FULL INVESTIGATION: articulable factual basis of criminal/NS threat; full methods including FISA, Title III, UCO, sensitive techniques (with approvals)
+
+CRITICAL RULES:
+1. Tailor authorized methods strictly to the tier the user provided. Do NOT recommend Full-tier methods (FISA, Title III, UCOs, undisclosed participation in religious/political org meetings, etc.) for Preliminary or Guardian tiers.
+2. Always note that any sensitive investigative matter, sensitive technique, FISA, Title III, undercover operation, or undisclosed participation requires written approval per AGG-Dom/DIOG — do not imply field agent discretion.
+3. Cross-reference multiple statutes when provided — surface the strongest charging theory and any synergies.
+4. Be specific and operational. Cite typical coordination partners (USAO/NSD, CDC, SSA, FBI HQ, IC partners like NSA/CIA/NCSC, regulators like OFAC/BIS/DDTC, FinCEN, CISA, CBP/HSI) where relevant.
+5. NEVER produce false statements about law or procedure. If a method's availability depends on facts you don't have, say so.
+
+Return JSON with this exact shape:
+{
+  "tier_assessment": "string — 1-2 sentences confirming the tier is appropriate or recommending escalation/de-escalation given the predication",
+  "next_steps": [{"priority":"HIGH|MEDIUM|LOW", "action":"string", "rationale":"string", "approval_required":"string or null"}],
+  "authorized_methods": [{"method":"string", "tier_appropriate":true|false, "approval_required":"string or null", "notes":"string"}],
+  "collection_gaps": [{"gap":"string", "why_it_matters":"string", "how_to_close":"string"}],
+  "coordination": [{"partner":"string", "purpose":"string", "timing":"string"}],
+  "escalation_triggers": ["string"],
+  "elements_checklist": [{"statute":"string", "element":"string", "evidence_needed":"string", "status":"DEVELOPED|PARTIAL|GAP"}]
+}`;
+
+  const userPrompt = `INVESTIGATIVE TIER: ${tier}
+
+STATUTE(S) UNDER INVESTIGATION:
+${statuteList}
+
+SUBJECT: ${subject || "(not provided)"}
+SOURCE/PREDICATION CHANNEL: ${source || "(not provided)"}
+PREDICATION NARRATIVE: ${notes || "(not provided)"}
+
+EVIDENCE/STEPS COMPLETED TO DATE:
+${completedSummary}
+
+OUTSTANDING STEPS:
+${openSummary}
+
+Produce the JSON analysis now.`;
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4000,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(()=>"");
+    throw new Error(`API ${response.status}: ${errText.slice(0,200)}`);
+  }
+
+  const data = await response.json();
+  const text = (data.content || [])
+    .filter(b => b.type === "text")
+    .map(b => b.text)
+    .join("\n")
+    .trim();
+
+  const cleaned = text.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+  // Find first { and last }
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("No JSON object found in response");
+  return JSON.parse(cleaned.slice(start, end + 1));
+}
 
 function App() {
   const [tab, setTab] = useState(0);
   const [cases, setCases] = useState([]);
   const [caseTasks, setCaseTasks] = useState({});
   const [showForm, setShowForm] = useState(false);
-  const [statuteMode, setStatuteMode] = useState("preset"); // "preset" | "custom"
-  const [form, setForm] = useState({ name:"",subject:"",violation:"",customViolation:"",priority:"HIGH",sol:"",source:"",status:"ACTIVE",notes:"" });
+  const [statuteMode, setStatuteMode] = useState("preset");
+  const [form, setForm] = useState({
+    name:"", subject:"", violations:[], customViolation:"",
+    priority:"HIGH", sol:"", source:"", status:"ACTIVE", notes:"", tier:"PRELIMINARY"
+  });
+  const [statutePicker, setStatutePicker] = useState("");
   const [selId, setSelId] = useState(null);
   const [phase, setPhase] = useState("IMMEDIATE");
   const [briefId, setBriefId] = useState(null);
+  const [aiCaseId, setAiCaseId] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(null);
   const [expandedStep, setExpandedStep] = useState(null);
   const [collapsed, setCollapsed] = useState({});
   const [saveLabel, setSaveLabel] = useState("● SAVED");
@@ -312,30 +599,50 @@ function App() {
     const saved = loadData();
     if (saved?.cases?.length) {
       setCases(saved.cases); setCaseTasks(saved.caseTasks||{});
-      setSelId(saved.cases[0]?.id||null); setBriefId(saved.cases[0]?.id||null);
+      setSelId(saved.cases[0]?.id||null);
+      setBriefId(saved.cases[0]?.id||null);
+      setAiCaseId(saved.cases[0]?.id||null);
     } else {
-      const st = { 1:buildTasks("18 U.S.C. § 794"), 2:buildTasks("18 U.S.C. § 951") };
-      setCases(SEED); setCaseTasks(st); setSelId(1); setBriefId(1); saveData(SEED,st);
+      const st = { 1:buildTasks(["18 U.S.C. § 794"]), 2:buildTasks(["18 U.S.C. § 951"]) };
+      setCases(SEED); setCaseTasks(st);
+      setSelId(1); setBriefId(1); setAiCaseId(1);
+      saveData(SEED,st);
     }
   }, []);
 
   const persist = (c, t) => { saveData(c,t); setSaveLabel("● SAVING..."); setTimeout(()=>setSaveLabel("● SAVED"),600); };
 
-  const getViolation = () => statuteMode === "custom" ? form.customViolation : form.violation;
+  const addStatute = (key) => {
+    if (!key) return;
+    if (form.violations.includes(key)) return;
+    setForm({ ...form, violations: [...form.violations, key] });
+    setStatutePicker("");
+  };
+  const removeStatute = (key) => setForm({ ...form, violations: form.violations.filter(v => v !== key) });
 
   const addCase = () => {
-    const violation = getViolation();
-    if (!form.name || !violation) return;
+    let violations;
+    if (statuteMode === "custom") {
+      const c = form.customViolation.trim();
+      if (!c) return;
+      violations = [c];
+    } else {
+      violations = form.violations;
+    }
+    if (!form.name || !violations.length) return;
+
     const id = Date.now();
-    const key = matchStatute(violation);
-    const threat = key ? (CI_STATUTES[key].threat || "CI") : "CI";
-    const nc = { ...form, violation, id, threat };
-    const nt = buildTasks(violation);
+    const threat = primaryThreat(violations);
+    const nc = { ...form, violations, id, threat, aiAnalysis:null };
+    delete nc.customViolation;
+    const nt = buildTasks(violations);
     const newCases = [...cases, nc];
     const newTasks = { ...caseTasks, [id]: nt };
     setCases(newCases); setCaseTasks(newTasks); persist(newCases, newTasks);
-    setForm({ name:"",subject:"",violation:"",customViolation:"",priority:"HIGH",sol:"",source:"",status:"ACTIVE",notes:"" });
-    setShowForm(false); setSelId(id); setBriefId(id); setTab(1);
+    setForm({ name:"", subject:"", violations:[], customViolation:"", priority:"HIGH", sol:"", source:"", status:"ACTIVE", notes:"", tier:"PRELIMINARY" });
+    setShowForm(false);
+    setSelId(id); setBriefId(id); setAiCaseId(id);
+    setTab(1);
   };
 
   const deleteCase = (id) => {
@@ -344,11 +651,42 @@ function App() {
     setCases(newCases); setCaseTasks(newTasks); persist(newCases,newTasks);
     if(selId===id) setSelId(newCases[0]?.id||null);
     if(briefId===id) setBriefId(newCases[0]?.id||null);
+    if(aiCaseId===id) setAiCaseId(newCases[0]?.id||null);
   };
 
   const toggle = (caseId, taskId) => {
     const newTasks = {...caseTasks,[caseId]:caseTasks[caseId].map(t=>t.id===taskId?{...t,done:!t.done}:t)};
     setCaseTasks(newTasks); persist(cases,newTasks);
+  };
+
+  const updateCaseTier = (caseId, tier) => {
+    const newCases = cases.map(c => c.id === caseId ? { ...c, tier } : c);
+    setCases(newCases); persist(newCases, caseTasks);
+  };
+
+  const runAI = async () => {
+    const c = cases.find(x => x.id === aiCaseId);
+    if (!c) return;
+    setAiLoading(true); setAiError(null);
+    try {
+      const tasks = caseTasks[c.id] || [];
+      const completedSteps = tasks.filter(t => t.done);
+      const openSteps = tasks.filter(t => !t.done);
+      const result = await generateAIAnalysis({
+        tier: c.tier || "PRELIMINARY",
+        violations: c.violations || [],
+        subject: c.subject,
+        source: c.source,
+        notes: c.notes,
+        completedSteps, openSteps,
+      });
+      const newCases = cases.map(x => x.id === c.id ? { ...x, aiAnalysis: { generatedAt: new Date().toISOString(), result } } : x);
+      setCases(newCases); persist(newCases, caseTasks);
+    } catch (err) {
+      setAiError(String(err.message || err));
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const solDays = s => s ? Math.ceil((new Date(s)-new Date())/86400000) : null;
@@ -359,9 +697,18 @@ function App() {
   const pct = sTasks.length ? Math.round((done/sTasks.length)*100) : 0;
   const bc = cases.find(c=>c.id===briefId);
   const bTasks = caseTasks[briefId]||[];
+  const ac = cases.find(c=>c.id===aiCaseId);
 
   const elGroups = {};
   pTasks.forEach(t=>{ if(!elGroups[t.elementName]) elGroups[t.elementName]=[]; elGroups[t.elementName].push(t); });
+
+  // Group statutes for the dropdown
+  const statutesByGroup = {};
+  Object.entries(CI_STATUTES).forEach(([k,v]) => {
+    const g = v.group || "OTHER";
+    if (!statutesByGroup[g]) statutesByGroup[g] = [];
+    statutesByGroup[g].push([k, v.label]);
+  });
 
   const C = {
     root:{minHeight:"100vh",background:"#060d18",color:"#6090b0",fontFamily:"'Courier New',monospace"},
@@ -374,7 +721,7 @@ function App() {
     tabBar:{display:"flex",background:"#060d18",borderBottom:"1px solid #0a1525",overflowX:"auto"},
     tab:{background:"none",border:"none",borderBottom:"2px solid transparent",color:"#1e3a5f",padding:"11px 16px",fontSize:9,letterSpacing:2,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"},
     tabOn:{borderBottomColor:"#2563eb",color:"#60a5fa",fontWeight:"bold"},
-    body:{padding:"16px",maxWidth:800,margin:"0 auto"},
+    body:{padding:"16px",maxWidth:900,margin:"0 auto"},
     row:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8},
     dim:{fontSize:9,color:"#1e3a5f",letterSpacing:2},
     lbl:{fontSize:8,color:"#1e3a5f",letterSpacing:1,marginBottom:4},
@@ -399,8 +746,17 @@ function App() {
     evPanel:{background:"#050b14",borderLeft:"3px solid #2563eb",borderBottom:"1px solid #0a1525",padding:"12px 14px 12px 58px"},
     briefCard:{background:"#070e1c",border:"1px solid #2563eb",padding:20,marginBottom:14,boxShadow:"0 0 30px #2563eb10"},
     briefTitle:{fontSize:9,color:"#60a5fa",letterSpacing:3,marginBottom:20,borderBottom:"1px solid #0a1525",paddingBottom:12},
-    modeToggle:{display:"flex",gap:0,marginBottom:12},
+    modeToggle:{display:"flex",gap:0,marginBottom:12,flexWrap:"wrap"},
     modeBtn:(active)=>({background:active?"#0a1525":"none",border:"1px solid "+(active?"#2563eb":"#0a1525"),color:active?"#60a5fa":"#1e3a5f",padding:"6px 14px",fontSize:9,letterSpacing:1,fontFamily:"inherit",cursor:"pointer"}),
+    chip:(color)=>({display:"inline-flex",alignItems:"center",gap:6,background:color+"15",border:`1px solid ${color}55`,color:color,padding:"4px 8px",fontSize:9,letterSpacing:1,marginRight:6,marginBottom:6}),
+    chipX:{background:"transparent",border:"none",color:"inherit",cursor:"pointer",fontSize:11,fontFamily:"inherit",padding:0,lineHeight:1},
+    tierBox:(tier,active)=>({flex:1,minWidth:120,padding:"10px 12px",border:`1px solid ${active?TIER_COL[tier]:"#0a1525"}`,background:active?TIER_COL[tier]+"15":"#060d18",color:active?TIER_COL[tier]:"#4a7090",cursor:"pointer",textAlign:"left"}),
+    aiBox:{background:"#070e1c",border:"1px solid #2563eb",padding:18,marginBottom:14,boxShadow:"0 0 30px #2563eb10"},
+    aiHdr:{fontSize:9,color:"#60a5fa",letterSpacing:3,marginBottom:14,borderBottom:"1px solid #0a1525",paddingBottom:10},
+    aiSection:{marginBottom:18},
+    aiSectionTitle:{fontSize:9,color:"#60a5fa",letterSpacing:2,marginBottom:8,paddingBottom:4,borderBottom:"1px solid #0a1525"},
+    aiItem:{padding:"10px 12px",background:"#060d18",border:"1px solid #0a1525",marginBottom:6,fontSize:11,color:"#c8dcea",lineHeight:1.6},
+    warn:{background:"#3a1f00",border:"1px solid #f59e0b",color:"#fcd34d",padding:"10px 14px",fontSize:10,letterSpacing:1,marginBottom:14,lineHeight:1.5},
   };
 
   const badge = col => ({fontSize:8,padding:"2px 7px",background:col+"18",border:`1px solid ${col}44`,color:col,letterSpacing:1});
@@ -411,7 +767,7 @@ function App() {
       <div style={C.hdr}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={C.logo}>⬡</div>
-          <div><div style={C.appTitle}>CI CASE MANAGEMENT</div><div style={C.appSub}>ELEMENT-BASED WORKFLOW · RESTRICTED</div></div>
+          <div><div style={C.appTitle}>CI CASE MANAGEMENT</div><div style={C.appSub}>ELEMENT-BASED WORKFLOW · AI-AUGMENTED · RESTRICTED</div></div>
         </div>
         <div style={{display:"flex",gap:16,alignItems:"center",flexWrap:"wrap"}}>
           <div style={{fontSize:8,color:"#22c55e",letterSpacing:1}}>{saveLabel}</div>
@@ -451,18 +807,57 @@ function App() {
                   </div>
                 </div>
 
+                {/* Investigation Tier */}
+                <div style={{marginTop:16}}>
+                  <div style={C.lbl}>INVESTIGATION TIER (AGG-DOM / DIOG)</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    {TIERS.map(t=>(
+                      <div key={t} onClick={()=>setForm({...form,tier:t})} style={C.tierBox(t,form.tier===t)}>
+                        <div style={{fontSize:10,fontWeight:"bold",letterSpacing:2,marginBottom:4}}>{t}</div>
+                        <div style={{fontSize:8,letterSpacing:1,opacity:0.9,lineHeight:1.4}}>{TIER_DESC[t]}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Statute mode toggle */}
                 <div style={{marginTop:16,marginBottom:4}}>
-                  <div style={C.lbl}>STATUTE</div>
+                  <div style={C.lbl}>STATUTE(S) — multi-select</div>
                   <div style={C.modeToggle}>
                     <button onClick={()=>setStatuteMode("preset")} style={C.modeBtn(statuteMode==="preset")}>PRESET STATUTES</button>
                     <button onClick={()=>setStatuteMode("custom")} style={C.modeBtn(statuteMode==="custom")}>CUSTOM / TYPE YOUR OWN</button>
                   </div>
                   {statuteMode==="preset" ? (
-                    <select value={form.violation} onChange={e=>setForm({...form,violation:e.target.value})} style={C.inp}>
-                      <option value="">— SELECT STATUTE —</option>
-                      {Object.entries(CI_STATUTES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
-                    </select>
+                    <>
+                      <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+                        <select
+                          value={statutePicker}
+                          onChange={e=>setStatutePicker(e.target.value)}
+                          style={{...C.inp,flex:1}}>
+                          <option value="">— SELECT STATUTE TO ADD —</option>
+                          {GROUP_ORDER.filter(g=>statutesByGroup[g]).map(g => (
+                            <optgroup key={g} label={g}>
+                              {statutesByGroup[g].map(([k,lbl])=><option key={k} value={k}>{lbl}</option>)}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <button onClick={()=>addStatute(statutePicker)} style={C.btnP}>+ ADD</button>
+                      </div>
+                      {form.violations.length > 0 && (
+                        <div style={{marginTop:10,padding:"8px 10px",border:"1px solid #0a1525",background:"#060d18"}}>
+                          {form.violations.map(v=>{
+                            const def = CI_STATUTES[v];
+                            const color = THREAT_COL[def?.threat] || "#60a5fa";
+                            return (
+                              <span key={v} style={C.chip(color)}>
+                                {def?.label || v}
+                                <button onClick={()=>removeStatute(v)} style={C.chipX} title="Remove">✕</button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div>
                       <input
@@ -480,10 +875,10 @@ function App() {
 
                 <div style={{marginTop:12}}>
                   <div style={C.lbl}>PREDICATION SUMMARY</div>
-                  <textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} rows={2} style={{...C.inp,resize:"none"}}/>
+                  <textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} rows={3} style={{...C.inp,resize:"none"}}/>
                 </div>
                 <div style={C.hint}>
-                  ℹ Preset statutes generate statute-specific element tasks. Custom statutes generate a universal CI investigative element checklist. All data saves automatically.
+                  ℹ Preset statutes generate statute-specific element tasks. Multi-statute cases concatenate all element checklists. Tier governs AI Analysis recommendations. All data saves automatically.
                 </div>
                 <div style={{display:"flex",gap:8,marginTop:12}}>
                   <button onClick={addCase} style={C.btnP}>OPEN CASE & GENERATE TASKS</button>
@@ -498,6 +893,8 @@ function App() {
               const cd=ct.filter(t=>t.done).length;
               const cp=ct.length?Math.round((cd/ct.length)*100):0;
               const tc=THREAT_COL[c.threat]||"#60a5fa";
+              const tierC = TIER_COL[c.tier] || "#60a5fa";
+              const violations = c.violations || (c.violation ? [c.violation] : []);
               return (
                 <div key={c.id} style={{...C.cCard,borderLeftColor:PCOL[c.priority]}} onMouseEnter={e=>e.currentTarget.style.background="#080f1c"} onMouseLeave={e=>e.currentTarget.style.background="#060d18"}>
                   <div style={{display:"flex",justifyContent:"space-between",gap:12}}>
@@ -507,8 +904,11 @@ function App() {
                         <span style={{fontSize:10,color:"#4a7090"}}>SUBJ: {c.subject}</span>
                         <span style={badge(PCOL[c.priority])}>{c.priority}</span>
                         <span style={badge(tc)}>{c.threat||"CI"}</span>
+                        <span style={badge(tierC)}>{c.tier||"PRELIMINARY"}</span>
                       </div>
-                      <div style={{fontSize:9,color:"#2d506e",marginBottom:8}}>{c.violation}</div>
+                      <div style={{fontSize:9,color:"#2d506e",marginBottom:8}}>
+                        {violations.length === 1 ? violations[0] : `${violations.length} statutes: ${violations.slice(0,2).join(", ")}${violations.length>2?` +${violations.length-2} more`:""}`}
+                      </div>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <div style={{flex:1,height:4,background:"#0a1525",borderRadius:2}}>
                           <div style={{width:`${cp}%`,height:"100%",background:cp===100?"#22c55e":"#2563eb",borderRadius:2,transition:"width .4s"}}/>
@@ -542,8 +942,18 @@ function App() {
             {sc ? (
               <>
                 <div style={C.progCard}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                    <div><div style={C.cName}>{sc.name} — {sc.subject}</div><div style={{fontSize:9,color:"#2d506e",marginTop:2}}>{sc.violation}</div></div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
+                    <div>
+                      <div style={C.cName}>{sc.name} — {sc.subject}</div>
+                      <div style={{fontSize:9,color:"#2d506e",marginTop:2}}>
+                        {(sc.violations || (sc.violation ? [sc.violation] : [])).join(" · ")}
+                      </div>
+                      <div style={{marginTop:6}}>
+                        {TIERS.map(t=>(
+                          <button key={t} onClick={()=>updateCaseTier(sc.id,t)} style={{...C.pill,...(sc.tier===t?{...C.pillOn,borderColor:TIER_COL[t],color:TIER_COL[t]}:{}),fontSize:8,padding:"4px 8px",marginRight:4}}>{t}</button>
+                        ))}
+                      </div>
+                    </div>
                     <div style={{textAlign:"right"}}>
                       <div style={{fontSize:30,fontWeight:"bold",color:pct===100?"#22c55e":"#60a5fa",lineHeight:1}}>{pct}%</div>
                       <div style={{fontSize:8,color:"#1e3a5f"}}>{done}/{sTasks.length} COMPLETE</div>
@@ -643,7 +1053,11 @@ function App() {
             <div style={{marginBottom:16}}>
               <div style={C.lbl}>SELECT CASE</div>
               <select value={briefId||""} onChange={e=>setBriefId(Number(e.target.value))} style={{...C.inp,width:"100%"}}>
-                {cases.map(c=><option key={c.id} value={c.id}>{c.name} — {c.subject} — {c.violation}</option>)}
+                {cases.map(c=>{
+                  const violations = c.violations || (c.violation ? [c.violation] : []);
+                  const vSummary = violations.length === 1 ? violations[0] : `${violations.length} statutes`;
+                  return <option key={c.id} value={c.id}>{c.name} — {c.subject} — {vSummary}</option>;
+                })}
               </select>
             </div>
             {bc&&(()=>{
@@ -652,11 +1066,20 @@ function App() {
               const bp=bTasks.length?Math.round((bd/bTasks.length)*100):0;
               const pending=bTasks.filter(t=>!t.done&&t.phase==="IMMEDIATE");
               const elNames=[...new Set(bTasks.map(t=>t.elementName))];
+              const violations = bc.violations || (bc.violation ? [bc.violation] : []);
               return (
                 <>
                   <div style={C.briefCard}>
                     <div style={C.briefTitle}>▸ SUPERVISOR BRIEFING — {bc.name} / {bc.subject}</div>
-                    {[["STATUTE",bc.violation||"—"],["SUBJECT ID",bc.subject||"—"],["THREAT",bc.threat||"CI"],["SOURCE",`${bc.source||"—"}${bc.notes?" — "+bc.notes:""}`],["STATUS",bc.status],["PRIORITY",bc.priority]].map(([l,v])=>(
+                    {[
+                      ["STATUTE(S)", violations.join(" · ") || "—"],
+                      ["TIER", bc.tier || "PRELIMINARY"],
+                      ["SUBJECT ID", bc.subject||"—"],
+                      ["THREAT", bc.threat||"CI"],
+                      ["SOURCE", `${bc.source||"—"}${bc.notes?" — "+bc.notes:""}`],
+                      ["STATUS", bc.status],
+                      ["PRIORITY", bc.priority]
+                    ].map(([l,v])=>(
                       <div key={l} style={{display:"flex",marginBottom:10,gap:14}}>
                         <div style={{fontSize:8,color:"#1e3a5f",letterSpacing:1,minWidth:120}}>{l}</div>
                         <div style={{fontSize:11,color:"#c8dcea"}}>{v}</div>
@@ -702,11 +1125,17 @@ function App() {
                         {pending.map(t=><div key={t.id} style={{fontSize:10,color:"#f59e0b",marginBottom:4}}>▸ {t.text}</div>)}
                       </div>
                     )}
+                    {bc.aiAnalysis?.result?.tier_assessment && (
+                      <div style={{borderTop:"1px solid #0a1525",paddingTop:12,marginTop:4}}>
+                        <div style={{fontSize:8,color:"#1e3a5f",letterSpacing:2,marginBottom:8}}>AI TIER ASSESSMENT</div>
+                        <div style={{fontSize:11,color:"#c8dcea",lineHeight:1.6}}>{bc.aiAnalysis.result.tier_assessment}</div>
+                      </div>
+                    )}
                   </div>
                   <div style={{...C.briefCard,borderColor:"#0e1e30",borderLeftColor:"#2563eb",borderLeftWidth:3,boxShadow:"none"}}>
                     <div style={C.lbl}>VERBAL RATIONALE</div>
                     <div style={{fontSize:11,color:"#c8dcea",lineHeight:2,fontStyle:"italic",marginTop:8}}>
-                      "We opened {bc.name} on subject {bc.subject} based on {bc.source||"[source]"} predication indicating a potential violation of {bc.violation||"[statute]"}.{sol?` SOL expires in ${sol} days.`:""} Element completion stands at {bp}%{pending.length?`, with ${pending.length} immediate sub-steps outstanding`:""}.{bc.notes?` Predication: ${bc.notes}.`:""}"
+                      "We opened {bc.name} on subject {bc.subject} as a {bc.tier||"PRELIMINARY"} investigation based on {bc.source||"[source]"} predication indicating potential violation(s) of {violations.join(", ")||"[statute]"}.{sol?` SOL expires in ${sol} days.`:""} Element completion stands at {bp}%{pending.length?`, with ${pending.length} immediate sub-steps outstanding`:""}.{bc.notes?` Predication: ${bc.notes}.`:""}"
                     </div>
                   </div>
                 </>
@@ -715,6 +1144,188 @@ function App() {
             {!bc&&<div style={{fontSize:12,color:"#1e3a5f",textAlign:"center",padding:"50px 0",fontStyle:"italic"}}>No cases available.</div>}
           </div>
         )}
+
+        {/* ── AI ANALYSIS ── */}
+        {tab===3 && (
+          <div>
+            <div style={C.warn}>
+              ⚠ DECISION-SUPPORT DRAFT — NOT LEGAL AUTHORIZATION. All investigative methods require written approval per AGG-Dom/DIOG. Coordinate with CDC/SSA/USAO before execution. Output is AI-generated and must be reviewed by qualified personnel.
+            </div>
+
+            <div style={{marginBottom:16}}>
+              <div style={C.lbl}>SELECT CASE FOR AI ANALYSIS</div>
+              <select value={aiCaseId||""} onChange={e=>setAiCaseId(Number(e.target.value))} style={{...C.inp,width:"100%"}}>
+                {cases.map(c=>{
+                  const violations = c.violations || (c.violation ? [c.violation] : []);
+                  return <option key={c.id} value={c.id}>{c.name} — {c.subject} — {c.tier||"PRELIMINARY"} — {violations.length===1?violations[0]:`${violations.length} statutes`}</option>;
+                })}
+              </select>
+            </div>
+
+            {ac && (
+              <>
+                <div style={C.aiBox}>
+                  <div style={C.aiHdr}>▸ AI ANALYSIS INPUTS</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+                    <div>
+                      <div style={C.lbl}>CASE</div>
+                      <div style={{fontSize:11,color:"#c8dcea"}}>{ac.name} — {ac.subject}</div>
+                    </div>
+                    <div>
+                      <div style={C.lbl}>TIER</div>
+                      <div style={{fontSize:11,color:TIER_COL[ac.tier||"PRELIMINARY"],fontWeight:"bold"}}>{ac.tier||"PRELIMINARY"}</div>
+                    </div>
+                  </div>
+                  <div style={{marginBottom:10}}>
+                    <div style={C.lbl}>STATUTES</div>
+                    <div>
+                      {(ac.violations||[]).map(v=>{
+                        const def = CI_STATUTES[v];
+                        const color = THREAT_COL[def?.threat] || "#60a5fa";
+                        return <span key={v} style={C.chip(color)}>{def?.label || v}</span>;
+                      })}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                    <button onClick={runAI} disabled={aiLoading} style={{...C.btnP,opacity:aiLoading?0.5:1,cursor:aiLoading?"wait":"pointer"}}>
+                      {aiLoading ? "▸ ANALYZING..." : (ac.aiAnalysis ? "↻ RE-RUN ANALYSIS" : "▸ GENERATE NEXT STEPS & GAP ANALYSIS")}
+                    </button>
+                    {ac.aiAnalysis?.generatedAt && (
+                      <span style={{fontSize:8,color:"#1e3a5f",letterSpacing:1}}>
+                        LAST RUN: {new Date(ac.aiAnalysis.generatedAt).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                  {aiError && (
+                    <div style={{marginTop:10,padding:"10px 12px",background:"#3a0a0a",border:"1px solid #ef4444",color:"#fca5a5",fontSize:10}}>
+                      ERROR: {aiError}
+                    </div>
+                  )}
+                </div>
+
+                {ac.aiAnalysis?.result && (() => {
+                  const r = ac.aiAnalysis.result;
+                  const tierC = TIER_COL[ac.tier||"PRELIMINARY"];
+                  return (
+                    <div style={C.aiBox}>
+                      <div style={C.aiHdr}>▸ ANALYSIS OUTPUT</div>
+
+                      {r.tier_assessment && (
+                        <div style={C.aiSection}>
+                          <div style={C.aiSectionTitle}>◈ TIER ASSESSMENT</div>
+                          <div style={{...C.aiItem,borderLeft:`3px solid ${tierC}`}}>{r.tier_assessment}</div>
+                        </div>
+                      )}
+
+                      {r.next_steps?.length > 0 && (
+                        <div style={C.aiSection}>
+                          <div style={C.aiSectionTitle}>◈ RECOMMENDED NEXT STEPS</div>
+                          {r.next_steps.map((s,i)=>(
+                            <div key={i} style={{...C.aiItem,borderLeft:`3px solid ${PCOL[s.priority]||"#2563eb"}`}}>
+                              <div style={{display:"flex",gap:8,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
+                                <span style={badge(PCOL[s.priority]||"#60a5fa")}>{s.priority||"—"}</span>
+                                <span style={{fontWeight:"bold",color:"#b8d0e8"}}>{s.action}</span>
+                              </div>
+                              <div style={{fontSize:10,color:"#7090a8",marginBottom:s.approval_required?6:0}}>{s.rationale}</div>
+                              {s.approval_required && (
+                                <div style={{fontSize:9,color:"#f59e0b",letterSpacing:1}}>⚠ APPROVAL: {s.approval_required}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {r.authorized_methods?.length > 0 && (
+                        <div style={C.aiSection}>
+                          <div style={C.aiSectionTitle}>◈ AUTHORIZED METHODS (TIER-SCOPED)</div>
+                          {r.authorized_methods.map((m,i)=>(
+                            <div key={i} style={{...C.aiItem,borderLeft:`3px solid ${m.tier_appropriate?"#22c55e":"#ef4444"}`}}>
+                              <div style={{display:"flex",gap:8,marginBottom:4,alignItems:"center",flexWrap:"wrap"}}>
+                                <span style={{fontWeight:"bold",color:"#b8d0e8"}}>{m.method}</span>
+                                <span style={badge(m.tier_appropriate?"#22c55e":"#ef4444")}>
+                                  {m.tier_appropriate ? "TIER-APPROPRIATE" : "REQUIRES ESCALATION"}
+                                </span>
+                              </div>
+                              {m.notes && <div style={{fontSize:10,color:"#7090a8",marginBottom:m.approval_required?4:0}}>{m.notes}</div>}
+                              {m.approval_required && (
+                                <div style={{fontSize:9,color:"#f59e0b",letterSpacing:1}}>⚠ APPROVAL: {m.approval_required}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {r.collection_gaps?.length > 0 && (
+                        <div style={C.aiSection}>
+                          <div style={C.aiSectionTitle}>◈ CRITICAL COLLECTION GAPS</div>
+                          {r.collection_gaps.map((g,i)=>(
+                            <div key={i} style={{...C.aiItem,borderLeft:"3px solid #f59e0b"}}>
+                              <div style={{fontWeight:"bold",color:"#fcd34d",marginBottom:4}}>{g.gap}</div>
+                              <div style={{fontSize:10,color:"#7090a8",marginBottom:4}}><span style={{color:"#1e3a5f"}}>WHY:</span> {g.why_it_matters}</div>
+                              <div style={{fontSize:10,color:"#7090a8"}}><span style={{color:"#1e3a5f"}}>CLOSE BY:</span> {g.how_to_close}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {r.coordination?.length > 0 && (
+                        <div style={C.aiSection}>
+                          <div style={C.aiSectionTitle}>◈ COORDINATION REQUIREMENTS</div>
+                          {r.coordination.map((c,i)=>(
+                            <div key={i} style={{...C.aiItem,borderLeft:"3px solid #06b6d4"}}>
+                              <div style={{display:"flex",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                                <span style={{fontWeight:"bold",color:"#06b6d4"}}>{c.partner}</span>
+                                <span style={{fontSize:9,color:"#1e3a5f",letterSpacing:1}}>· {c.timing}</span>
+                              </div>
+                              <div style={{fontSize:10,color:"#7090a8"}}>{c.purpose}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {r.escalation_triggers?.length > 0 && (
+                        <div style={C.aiSection}>
+                          <div style={C.aiSectionTitle}>◈ ESCALATION TRIGGERS</div>
+                          {r.escalation_triggers.map((t,i)=>(
+                            <div key={i} style={{...C.aiItem,borderLeft:"3px solid #ef4444"}}>▸ {t}</div>
+                          ))}
+                        </div>
+                      )}
+
+                      {r.elements_checklist?.length > 0 && (
+                        <div style={C.aiSection}>
+                          <div style={C.aiSectionTitle}>◈ STATUTE-SPECIFIC ELEMENT CHECKLIST</div>
+                          {r.elements_checklist.map((e,i)=>{
+                            const sCol = e.status==="DEVELOPED"?"#22c55e":e.status==="PARTIAL"?"#eab308":"#ef4444";
+                            return (
+                              <div key={i} style={{...C.aiItem,borderLeft:`3px solid ${sCol}`}}>
+                                <div style={{display:"flex",gap:8,marginBottom:4,flexWrap:"wrap",alignItems:"center"}}>
+                                  <span style={badge(sCol)}>{e.status}</span>
+                                  <span style={{fontSize:9,color:"#1e3a5f",letterSpacing:1}}>{e.statute}</span>
+                                </div>
+                                <div style={{color:"#b8d0e8",fontWeight:"bold",marginBottom:4}}>{e.element}</div>
+                                <div style={{fontSize:10,color:"#7090a8"}}><span style={{color:"#1e3a5f"}}>EVIDENCE NEEDED:</span> {e.evidence_needed}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {!ac.aiAnalysis && !aiLoading && (
+                  <div style={{fontSize:11,color:"#1e3a5f",textAlign:"center",padding:"40px 20px",fontStyle:"italic",border:"1px dashed #0a1525",background:"#070e1c"}}>
+                    No analysis generated yet for this case. Click "GENERATE NEXT STEPS & GAP ANALYSIS" above.<br/><br/>
+                    Analysis is tier-scoped: <span style={{color:TIER_COL[ac.tier||"PRELIMINARY"]}}>{ac.tier||"PRELIMINARY"}</span> tier methods only.
+                  </div>
+                )}
+              </>
+            )}
+            {!ac && <div style={{fontSize:12,color:"#1e3a5f",textAlign:"center",padding:"50px 0",fontStyle:"italic"}}>No cases available.</div>}
+          </div>
+        )}
+
       </div>
     </div>
   );
