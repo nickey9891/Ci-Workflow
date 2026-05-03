@@ -1,5 +1,6 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/index.html b/index.html
-index 94811cabba034a7b26f60aac61e4583e337237bf..4ffaedde5d2eb5b28535e46d55e9e0c80dc9447b 100644
+index 94811cabba034a7b26f60aac61e4583e337237bf..f32da0e410c85e4b7d834002d76020666a1b4b0b 100644
 --- a/index.html
 +++ b/index.html
 @@ -361,54 +361,86 @@ const CI_STATUTES_LITE = [
@@ -147,7 +148,111 @@ index 94811cabba034a7b26f60aac61e4583e337237bf..4ffaedde5d2eb5b28535e46d55e9e0c8
        const newCases = cases.map(x => x.id === c.id ? { ...x, aiAnalysis: { generatedAt: new Date().toISOString(), result } } : x);
        setCases(newCases); persist(newCases, caseTasks);
      } catch (err) {
-@@ -959,50 +997,54 @@ function App() {
+@@ -687,50 +725,51 @@ function App() {
+     } finally {
+       setAiLoading(false);
+     }
+   };
+ 
+   const solDays = s => s ? Math.ceil((new Date(s)-new Date())/86400000) : null;
+   const sc = cases.find(c=>c.id===selId);
+   const sTasks = caseTasks[selId]||[];
+   const pTasks = sTasks.filter(t=>t.phase===phase);
+   const done = sTasks.filter(t=>t.done).length;
+   const pct = sTasks.length ? Math.round((done/sTasks.length)*100) : 0;
+   const bc = cases.find(c=>c.id===briefId);
+   const bTasks = caseTasks[briefId]||[];
+   const ac = cases.find(c=>c.id===aiCaseId);
+ 
+   const elGroups = {};
+   pTasks.forEach(t=>{ if(!elGroups[t.elementName]) elGroups[t.elementName]=[]; elGroups[t.elementName].push(t); });
+ 
+   // Group statutes for the dropdown
+   const statutesByGroup = {};
+   Object.entries(CI_STATUTES).forEach(([k,v]) => {
+     const g = v.group || "OTHER";
+     if (!statutesByGroup[g]) statutesByGroup[g] = [];
+     statutesByGroup[g].push([k, v.label]);
+   });
++  const statuteCount = Object.keys(CI_STATUTES).length;
+ 
+   const C = {
+     root:{minHeight:"100vh",background:"#060d18",color:"#6090b0",fontFamily:"'Courier New',monospace"},
+     hdr:{background:"#070e1c",borderBottom:"1px solid #0a1525",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8},
+     logo:{width:32,height:32,background:"#0a1525",border:"1px solid #1e3a6e",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:"#60a5fa",flexShrink:0},
+     appTitle:{fontSize:10,fontWeight:"bold",color:"#b8d0e8",letterSpacing:3},
+     appSub:{fontSize:7,color:"#1a3050",letterSpacing:2},
+     sLbl:{fontSize:8,color:"#1a3050",letterSpacing:1},
+     sNum:{fontSize:18,fontWeight:"bold",lineHeight:1},
+     tabBar:{display:"flex",background:"#060d18",borderBottom:"1px solid #0a1525",overflowX:"auto"},
+     tab:{background:"none",border:"none",borderBottom:"2px solid transparent",color:"#1e3a5f",padding:"11px 16px",fontSize:9,letterSpacing:2,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"},
+     tabOn:{borderBottomColor:"#2563eb",color:"#60a5fa",fontWeight:"bold"},
+     body:{padding:"16px",maxWidth:900,margin:"0 auto"},
+     row:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8},
+     dim:{fontSize:9,color:"#1e3a5f",letterSpacing:2},
+     lbl:{fontSize:8,color:"#1e3a5f",letterSpacing:1,marginBottom:4},
+     inp:{width:"100%",background:"#060d18",border:"1px solid #0a1525",color:"#c8dcea",padding:"8px 10px",fontSize:12,fontFamily:"inherit",boxSizing:"border-box",outline:"none"},
+     btnP:{background:"#0a1525",border:"1px solid #2563eb",color:"#60a5fa",padding:"9px 14px",fontSize:9,letterSpacing:2,fontFamily:"inherit",cursor:"pointer"},
+     btnG:{background:"none",border:"1px solid #0a1525",color:"#1e3a5f",padding:"9px 14px",fontSize:9,letterSpacing:2,fontFamily:"inherit",cursor:"pointer"},
+     formBox:{background:"#070e1c",border:"1px solid #2563eb",padding:18,marginBottom:18,boxShadow:"0 0 30px #2563eb10"},
+     formHdr:{fontSize:9,color:"#60a5fa",letterSpacing:3,marginBottom:16},
+     hint:{marginTop:10,fontSize:9,color:"#1e3a5f",background:"#060d18",padding:"8px 12px",border:"1px solid #0a1525"},
+     cCard:{background:"#060d18",border:"1px solid #0e1e30",borderLeft:"3px solid #ef4444",padding:"14px 16px",marginBottom:10,transition:"background .15s"},
+     cName:{fontSize:12,fontWeight:"bold",color:"#b8d0e8"},
+     progCard:{background:"#070e1c",border:"1px solid #0e1e30",padding:"14px 16px",marginBottom:14},
+@@ -801,50 +840,51 @@ function App() {
+                   <div><div style={C.lbl}>SOL DATE</div><input type="date" value={form.sol} onChange={e=>setForm({...form,sol:e.target.value})} style={C.inp}/></div>
+                   <div>
+                     <div style={C.lbl}>PRIORITY</div>
+                     <select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})} style={C.inp}>
+                       {PRIORITIES.map(p=><option key={p}>{p}</option>)}
+                     </select>
+                   </div>
+                 </div>
+ 
+                 {/* Investigation Tier */}
+                 <div style={{marginTop:16}}>
+                   <div style={C.lbl}>INVESTIGATION TIER (AGG-DOM / DIOG)</div>
+                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                     {TIERS.map(t=>(
+                       <div key={t} onClick={()=>setForm({...form,tier:t})} style={C.tierBox(t,form.tier===t)}>
+                         <div style={{fontSize:10,fontWeight:"bold",letterSpacing:2,marginBottom:4}}>{t}</div>
+                         <div style={{fontSize:8,letterSpacing:1,opacity:0.9,lineHeight:1.4}}>{TIER_DESC[t]}</div>
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+ 
+                 {/* Statute mode toggle */}
+                 <div style={{marginTop:16,marginBottom:4}}>
+                   <div style={C.lbl}>STATUTE(S) — multi-select</div>
++                  <div style={{fontSize:8,color:"#1e3a5f",letterSpacing:1,marginBottom:6}}>LOADED STATUTES: {statuteCount}</div>
+                   <div style={C.modeToggle}>
+                     <button onClick={()=>setStatuteMode("preset")} style={C.modeBtn(statuteMode==="preset")}>PRESET STATUTES</button>
+                     <button onClick={()=>setStatuteMode("custom")} style={C.modeBtn(statuteMode==="custom")}>CUSTOM / TYPE YOUR OWN</button>
+                   </div>
+                   {statuteMode==="preset" ? (
+                     <>
+                       <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+                         <select
+                           value={statutePicker}
+                           onChange={e=>setStatutePicker(e.target.value)}
+                           style={{...C.inp,flex:1}}>
+                           <option value="">— SELECT STATUTE TO ADD —</option>
+                           {GROUP_ORDER.filter(g=>statutesByGroup[g]).map(g => (
+                             <optgroup key={g} label={g}>
+                               {statutesByGroup[g].map(([k,lbl])=><option key={k} value={k}>{lbl}</option>)}
+                             </optgroup>
+                           ))}
+                         </select>
+                         <button onClick={()=>addStatute(statutePicker)} style={C.btnP}>+ ADD</button>
+                       </div>
+                       {form.violations.length > 0 && (
+                         <div style={{marginTop:10,padding:"8px 10px",border:"1px solid #0a1525",background:"#060d18"}}>
+                           {form.violations.map(v=>{
+                             const def = CI_STATUTES[v];
+                             const color = THREAT_COL[def?.threat] || "#60a5fa";
+@@ -959,50 +999,54 @@ function App() {
                        <div style={{fontSize:8,color:"#1e3a5f"}}>{done}/{sTasks.length} COMPLETE</div>
                      </div>
                    </div>
@@ -202,3 +307,6 @@ index 94811cabba034a7b26f60aac61e4583e337237bf..4ffaedde5d2eb5b28535e46d55e9e0c8
                        </div>
                        {!isCollapsed && steps.map((step,si)=>(
                          <div key={step.id}>
+ 
+EOF
+)
