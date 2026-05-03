@@ -383,10 +383,42 @@ const CI_STATUTES_LITE = [
   ["26 U.S.C. § 7206", "26 U.S.C. § 7206 — Fraud and False Statements (Tax)",    "CI",              "TITLE 26 — TAX"],
 ];
 
+const threatEvidence = (threat) => {
+  const map = {
+    "ESPIONAGE": "Classification records, FISA collection summaries, foreign contact attribution, damage assessment memo",
+    "FIS OPERATION": "Foreign direction/tasking communications, FARA records check, source reporting, surveillance logs",
+    "CYBER CI": "SIEM/EDR logs, forensic images, attribution package, malware/toolmark analysis",
+    "FIS CONSPIRACY": "Conspiracy timeline, co-conspirator communications, financial links, overt act documentation",
+    "IDENTITY EXPOSURE": "Employee access logs, insider-threat indicators, identity compromise indicators, witness interviews",
+    "TECH TRANSFER": "Export documentation, end-user checks, BIS/OFAC coordination records, shipping and procurement records",
+    "TRANSNATIONAL THREAT": "Cross-border travel records, foreign remittance trails, liaison reporting, customs records",
+    "CI": "Predication records, communications data, interview summaries, financial and travel records",
+  };
+  return map[threat] || map.CI;
+};
+const buildTemplateElements = (statute, label, threat) => ([
+  { name: "ELEMENT 1 — Predication & Statutory Nexus", color: "#ef4444", steps: [
+    { text: `Document predication facts specifically tied to ${label}`, evidence: `Opening EC, referral package, source reporting, legal review notes for ${statute}`, day: 1, phase: "IMMEDIATE" },
+    { text: "Identify subject, co-subjects, and relevant entities tied to the statute", evidence: "Identity records, link analysis, corporate records, communication metadata", day: 1, phase: "IMMEDIATE" },
+  ]},
+  { name: "ELEMENT 2 — Conduct Evidence", color: "#f97316", steps: [
+    { text: "Establish prohibited acts and timeline under the charged statute", evidence: "Chronology, surveillance logs, seized documents, digital artifacts", day: 2, phase: "IMMEDIATE" },
+    { text: "Preserve corroborating documentary and digital evidence", evidence: "Forensic images, warrants/returns, chain-of-custody logs, subpoena returns", day: 3, phase: "IMMEDIATE" },
+  ]},
+  { name: "ELEMENT 3 — Intent / Knowledge", color: "#eab308", steps: [
+    { text: "Develop intent/knowledge indicators for willful statutory violation", evidence: "Internal communications, training acknowledgments, concealment behavior, admissions", day: 5, phase: "WEEK 1" },
+    { text: "Assess motive and benefit to subject or foreign actor", evidence: threatEvidence(threat), day: 7, phase: "WEEK 1" },
+  ]},
+  { name: "ELEMENT 4 — Charging Readiness", color: "#22c55e", steps: [
+    { text: "Map each statutory element to developed evidence and identify gaps", evidence: "Element matrix, gap analysis memo, corroboration checklist", day: 10, phase: "WEEK 2" },
+    { text: "Prepare supervisor/AUSA briefing package and charging recommendation", evidence: "Integrated case summary, evidence index, witness list, legal theory memo", day: 14, phase: "WEEK 2" },
+  ]},
+]);
+
 // Merge lite statutes into the main database
 CI_STATUTES_LITE.forEach(([key, label, threat, group]) => {
   if (!CI_STATUTES[key]) {
-    CI_STATUTES[key] = { label, threat, group, elements: null }; // null => use buildCustomElements
+    CI_STATUTES[key] = { label, threat, group, elements: buildTemplateElements(key, label, threat) };
   }
 });
 
@@ -658,6 +690,12 @@ function App() {
     const newTasks = {...caseTasks,[caseId]:caseTasks[caseId].map(t=>t.id===taskId?{...t,done:!t.done}:t)};
     setCaseTasks(newTasks); persist(cases,newTasks);
   };
+  const setPhaseCompletion = (caseId, phaseName, doneValue) => {
+    const existing = caseTasks[caseId] || [];
+    const updated = existing.map(t => t.phase === phaseName ? { ...t, done: doneValue } : t);
+    const newTasks = { ...caseTasks, [caseId]: updated };
+    setCaseTasks(newTasks); persist(cases, newTasks);
+  };
 
   const updateCaseTier = (caseId, tier) => {
     const newCases = cases.map(c => c.id === caseId ? { ...c, tier } : c);
@@ -709,6 +747,11 @@ function App() {
     if (!statutesByGroup[g]) statutesByGroup[g] = [];
     statutesByGroup[g].push([k, v.label]);
   });
+  const statuteCount = Object.keys(CI_STATUTES).length;
+  const statutePreview = Object.entries(CI_STATUTES)
+    .map(([k,v]) => `${k} — ${v.label}`)
+    .slice(0, 12);
+  const allStatutes = Object.entries(CI_STATUTES).map(([k,v]) => ({ key:k, label:v.label }));
 
   const C = {
     root:{minHeight:"100vh",background:"#060d18",color:"#6090b0",fontFamily:"'Courier New',monospace"},
@@ -823,12 +866,24 @@ function App() {
                 {/* Statute mode toggle */}
                 <div style={{marginTop:16,marginBottom:4}}>
                   <div style={C.lbl}>STATUTE(S) — multi-select</div>
+                  <div style={{fontSize:8,color:"#1e3a5f",letterSpacing:1,marginBottom:6}}>LOADED STATUTES: {statuteCount}</div>
                   <div style={C.modeToggle}>
                     <button onClick={()=>setStatuteMode("preset")} style={C.modeBtn(statuteMode==="preset")}>PRESET STATUTES</button>
                     <button onClick={()=>setStatuteMode("custom")} style={C.modeBtn(statuteMode==="custom")}>CUSTOM / TYPE YOUR OWN</button>
                   </div>
                   {statuteMode==="preset" ? (
                     <>
+                      <div style={{fontSize:8,color:"#7090a8",marginBottom:8,lineHeight:1.6}}>
+                        PREVIEW: {statutePreview.join("  |  ")}{statuteCount>12?"  |  ...":""}
+                      </div>
+                      <details style={{marginBottom:10,border:"1px solid #0a1525",background:"#060d18",padding:"8px 10px"}}>
+                        <summary style={{cursor:"pointer",fontSize:9,color:"#60a5fa",letterSpacing:1}}>SHOW ALL LOADED STATUTES</summary>
+                        <div style={{maxHeight:160,overflowY:"auto",marginTop:8,paddingRight:6}}>
+                          {allStatutes.map(s=>(
+                            <div key={s.key} style={{fontSize:9,color:"#7090a8",marginBottom:4}}>{s.key} — {s.label}</div>
+                          ))}
+                        </div>
+                      </details>
                       <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
                         <select
                           value={statutePicker}
@@ -980,6 +1035,10 @@ function App() {
 
                 <div style={{fontSize:8,color:"#1e3a5f",letterSpacing:2,marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
                   <span>// {PHASE_RANGE[phase]}</span><span style={{flex:1,borderTop:"1px solid #0a1525"}}/>
+                </div>
+                <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+                  <button onClick={()=>setPhaseCompletion(selId,phase,true)} style={{...C.btnP,padding:"6px 10px",fontSize:8}}>MARK PHASE COMPLETE</button>
+                  <button onClick={()=>setPhaseCompletion(selId,phase,false)} style={{...C.btnG,padding:"6px 10px",fontSize:8}}>RESET PHASE</button>
                 </div>
 
                 {Object.entries(elGroups).map(([elName,steps])=>{
