@@ -28,6 +28,27 @@ const { useState, useEffect } = React;
 // ── Storage ───────────────────────────────────────────────────────────────────
 const STORAGE_KEY = "ci_workflow_v3";
 const LEGACY_KEY  = "ci_workflow_v2";
+const AI_API_KEY_STORAGE = "ci_workflow_anthropic_key";
+const normalizeViolations = (record) => {
+  if (!record) return [];
+  const fromArray = Array.isArray(record.violations) ? record.violations : [];
+  const fromLegacy = record.violation ? [record.violation] : [];
+  return [...new Set([...fromArray, ...fromLegacy].filter(Boolean))];
+};
+const violationsSummary = (record) => {
+  const violations = normalizeViolations(record);
+  if (!violations.length) return "No statutes selected";
+  return violations.length === 1 ? violations[0] : `${violations.length} statutes`;
+};
+const tierOpeningTemplate = (tier) => ({
+  PRELIMINARY: "Information/allegation indicates possible threat activity; predication supports a Preliminary Investigation with non-sensitive methods while collection develops an articulable factual basis.",
+  GUARDIAN: "Lead/threat information supports a narrow Guardian inquiry focused on immediate validation, threat triage, and rapid disposition or conversion if predication strengthens.",
+  FULL: "Developed predication reflects an articulable factual basis of criminal/national security threat activity; facts support Full Investigation authorities with required supervisory/legal approvals.",
+}[tier || "PRELIMINARY"]);
+const mechanicalPredicationSummary = (c, completionPct, pendingImmediate) => {
+  const statutes = normalizeViolations(c);
+  return `Predication Channel: ${c.source || "UNSPECIFIED"}. Subject: ${c.subject || "UNSPECIFIED"}. Statute Focus: ${statutes.join("; ") || "UNSPECIFIED"}. Tier Basis: ${tierOpeningTemplate(c.tier)}${c.notes ? ` Case Facts: ${c.notes}.` : ""} Investigative Posture: ${completionPct}% element-task completion with ${pendingImmediate} immediate actions outstanding.`;
+};
 const loadData = () => {
   try {
     const d = localStorage.getItem(STORAGE_KEY);
@@ -38,7 +59,7 @@ const loadData = () => {
       const parsed = JSON.parse(legacy);
       const cases = (parsed.cases || []).map(c => ({
         ...c,
-        violations: c.violations || (c.violation ? [c.violation] : []),
+        violations: normalizeViolations(c),
         tier: c.tier || "PRELIMINARY",
         aiAnalysis: c.aiAnalysis || null,
       }));
@@ -496,6 +517,10 @@ const SEED = [
 
 // ── AI Analysis ───────────────────────────────────────────────────────────────
 async function generateAIAnalysis({ tier, violations, subject, source, notes, completedSteps, openSteps }) {
+  const apiKey = localStorage.getItem(AI_API_KEY_STORAGE);
+  if (!apiKey) {
+    throw new Error("Missing Anthropic API key. Set it in the AI Analysis tab first.");
+  }
   const statuteList = violations.map(v => `${v} — ${CI_STATUTES[v]?.label || v}`).join("\n");
   const completedSummary = completedSteps.slice(0, 12).map(s => `✓ ${s.elementName}: ${s.text}`).join("\n") || "(none recorded)";
   const openSummary = openSteps.slice(0, 12).map(s => `○ ${s.elementName}: ${s.text}`).join("\n") || "(none recorded)";
@@ -545,7 +570,11 @@ Produce the JSON analysis now.`;
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01"
+    },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: 4000,
@@ -594,6 +623,7 @@ function App() {
   const [expandedStep, setExpandedStep] = useState(null);
   const [collapsed, setCollapsed] = useState({});
   const [saveLabel, setSaveLabel] = useState("● SAVED");
+  const [aiApiKey, setAiApiKey] = useState("");
 
   useEffect(() => {
     const saved = loadData();
@@ -608,6 +638,9 @@ function App() {
       setSelId(1); setBriefId(1); setAiCaseId(1);
       saveData(SEED,st);
     }
+  }, []);
+  useEffect(() => {
+    setAiApiKey(localStorage.getItem(AI_API_KEY_STORAGE) || "");
   }, []);
 
   const persist = (c, t) => { saveData(c,t); setSaveLabel("● SAVING..."); setTimeout(()=>setSaveLabel("● SAVED"),600); };
@@ -894,7 +927,7 @@ function App() {
               const cp=ct.length?Math.round((cd/ct.length)*100):0;
               const tc=THREAT_COL[c.threat]||"#60a5fa";
               const tierC = TIER_COL[c.tier] || "#60a5fa";
-              const violations = c.violations || (c.violation ? [c.violation] : []);
+              const violations = normalizeViolations(c);
               return (
                 <div key={c.id} style={{...C.cCard,borderLeftColor:PCOL[c.priority]}} onMouseEnter={e=>e.currentTarget.style.background="#080f1c"} onMouseLeave={e=>e.currentTarget.style.background="#060d18"}>
                   <div style={{display:"flex",justifyContent:"space-between",gap:12}}>
@@ -946,7 +979,7 @@ function App() {
                     <div>
                       <div style={C.cName}>{sc.name} — {sc.subject}</div>
                       <div style={{fontSize:9,color:"#2d506e",marginTop:2}}>
-                        {(sc.violations || (sc.violation ? [sc.violation] : [])).join(" · ")}
+                        {normalizeViolations(sc).join(" · ")}
                       </div>
                       <div style={{marginTop:6}}>
                         {TIERS.map(t=>(
@@ -957,6 +990,9 @@ function App() {
                     <div style={{textAlign:"right"}}>
                       <div style={{fontSize:30,fontWeight:"bold",color:pct===100?"#22c55e":"#60a5fa",lineHeight:1}}>{pct}%</div>
                       <div style={{fontSize:8,color:"#1e3a5f"}}>{done}/{sTasks.length} COMPLETE</div>
+                      <div style={{fontSize:8,color:"#f59e0b",marginTop:3}}>
+                        {sTasks.filter(t=>!t.done&&t.phase==="IMMEDIATE").length} IMMEDIATE OPEN
+                      </div>
                     </div>
                   </div>
                   <div style={{height:6,background:"#0a1525",borderRadius:3}}>
@@ -1053,11 +1089,7 @@ function App() {
             <div style={{marginBottom:16}}>
               <div style={C.lbl}>SELECT CASE</div>
               <select value={briefId||""} onChange={e=>setBriefId(Number(e.target.value))} style={{...C.inp,width:"100%"}}>
-                {cases.map(c=>{
-                  const violations = c.violations || (c.violation ? [c.violation] : []);
-                  const vSummary = violations.length === 1 ? violations[0] : `${violations.length} statutes`;
-                  return <option key={c.id} value={c.id}>{c.name} — {c.subject} — {vSummary}</option>;
-                })}
+                {cases.map(c=><option key={c.id} value={c.id}>{c.name} — {c.subject} — {violationsSummary(c)}</option>)}
               </select>
             </div>
             {bc&&(()=>{
@@ -1066,7 +1098,7 @@ function App() {
               const bp=bTasks.length?Math.round((bd/bTasks.length)*100):0;
               const pending=bTasks.filter(t=>!t.done&&t.phase==="IMMEDIATE");
               const elNames=[...new Set(bTasks.map(t=>t.elementName))];
-              const violations = bc.violations || (bc.violation ? [bc.violation] : []);
+              const violations = normalizeViolations(bc);
               return (
                 <>
                   <div style={C.briefCard}>
@@ -1135,7 +1167,13 @@ function App() {
                   <div style={{...C.briefCard,borderColor:"#0e1e30",borderLeftColor:"#2563eb",borderLeftWidth:3,boxShadow:"none"}}>
                     <div style={C.lbl}>VERBAL RATIONALE</div>
                     <div style={{fontSize:11,color:"#c8dcea",lineHeight:2,fontStyle:"italic",marginTop:8}}>
-                      "We opened {bc.name} on subject {bc.subject} as a {bc.tier||"PRELIMINARY"} investigation based on {bc.source||"[source]"} predication indicating potential violation(s) of {violations.join(", ")||"[statute]"}.{sol?` SOL expires in ${sol} days.`:""} Element completion stands at {bp}%{pending.length?`, with ${pending.length} immediate sub-steps outstanding`:""}.{bc.notes?` Predication: ${bc.notes}.`:""}"
+                      {mechanicalPredicationSummary(bc, bp, pending.length)} {sol?`SOL expires in ${sol} days.`:""}
+                    </div>
+                  </div>
+                  <div style={{...C.briefCard,borderColor:"#0e1e30",borderLeftColor:TIER_COL[bc.tier||"PRELIMINARY"],borderLeftWidth:3,boxShadow:"none"}}>
+                    <div style={C.lbl}>TIER OPENING EXAMPLE (SUPPORTING WRITE-UP)</div>
+                    <div style={{fontSize:11,color:"#c8dcea",lineHeight:1.8,marginTop:8}}>
+                      {tierOpeningTemplate(bc.tier)}
                     </div>
                   </div>
                 </>
@@ -1151,13 +1189,26 @@ function App() {
             <div style={C.warn}>
               ⚠ DECISION-SUPPORT DRAFT — NOT LEGAL AUTHORIZATION. All investigative methods require written approval per AGG-Dom/DIOG. Coordinate with CDC/SSA/USAO before execution. Output is AI-generated and must be reviewed by qualified personnel.
             </div>
+            <div style={{...C.aiBox,marginBottom:12}}>
+              <div style={C.aiHdr}>▸ AI CONFIGURATION</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                <input
+                  type="password"
+                  value={aiApiKey}
+                  onChange={e=>setAiApiKey(e.target.value)}
+                  placeholder="Enter Anthropic API key (stored in browser localStorage)"
+                  style={{...C.inp,flex:1,minWidth:280}}
+                />
+                <button onClick={() => { localStorage.setItem(AI_API_KEY_STORAGE, aiApiKey.trim()); setAiError(null); }} style={C.btnP}>SAVE KEY</button>
+                <button onClick={() => { localStorage.removeItem(AI_API_KEY_STORAGE); setAiApiKey(""); }} style={C.btnG}>CLEAR KEY</button>
+              </div>
+            </div>
 
             <div style={{marginBottom:16}}>
               <div style={C.lbl}>SELECT CASE FOR AI ANALYSIS</div>
               <select value={aiCaseId||""} onChange={e=>setAiCaseId(Number(e.target.value))} style={{...C.inp,width:"100%"}}>
                 {cases.map(c=>{
-                  const violations = c.violations || (c.violation ? [c.violation] : []);
-                  return <option key={c.id} value={c.id}>{c.name} — {c.subject} — {c.tier||"PRELIMINARY"} — {violations.length===1?violations[0]:`${violations.length} statutes`}</option>;
+                  return <option key={c.id} value={c.id}>{c.name} — {c.subject} — {c.tier||"PRELIMINARY"} — {violationsSummary(c)}</option>;
                 })}
               </select>
             </div>
