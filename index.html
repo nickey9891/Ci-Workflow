@@ -29,6 +29,15 @@ const { useState, useEffect } = React;
 const STORAGE_KEY = "ci_workflow_v3";
 const LEGACY_KEY  = "ci_workflow_v2";
 const AI_API_KEY_STORAGE = "ci_workflow_anthropic_key";
+const getStoredApiKey = () => {
+  try { return localStorage.getItem(AI_API_KEY_STORAGE) || ""; } catch (_) { return ""; }
+};
+const setStoredApiKey = (key) => {
+  try { localStorage.setItem(AI_API_KEY_STORAGE, key); } catch (_) {}
+};
+const clearStoredApiKey = () => {
+  try { localStorage.removeItem(AI_API_KEY_STORAGE); } catch (_) {}
+};
 const normalizeViolations = (record) => {
   if (!record) return [];
   const fromArray = Array.isArray(record.violations) ? record.violations : [];
@@ -517,7 +526,7 @@ const SEED = [
 
 // ── AI Analysis ───────────────────────────────────────────────────────────────
 async function generateAIAnalysis({ tier, violations, subject, source, notes, completedSteps, openSteps }) {
-  const apiKey = localStorage.getItem(AI_API_KEY_STORAGE);
+  const apiKey = getStoredApiKey();
   if (!apiKey) {
     throw new Error("Missing Anthropic API key. Set it in the AI Analysis tab first.");
   }
@@ -640,7 +649,7 @@ function App() {
     }
   }, []);
   useEffect(() => {
-    setAiApiKey(localStorage.getItem(AI_API_KEY_STORAGE) || "");
+    setAiApiKey(getStoredApiKey());
   }, []);
 
   const persist = (c, t) => { saveData(c,t); setSaveLabel("● SAVING..."); setTimeout(()=>setSaveLabel("● SAVED"),600); };
@@ -1199,8 +1208,8 @@ function App() {
                   placeholder="Enter Anthropic API key (stored in browser localStorage)"
                   style={{...C.inp,flex:1,minWidth:280}}
                 />
-                <button onClick={() => { localStorage.setItem(AI_API_KEY_STORAGE, aiApiKey.trim()); setAiError(null); }} style={C.btnP}>SAVE KEY</button>
-                <button onClick={() => { localStorage.removeItem(AI_API_KEY_STORAGE); setAiApiKey(""); }} style={C.btnG}>CLEAR KEY</button>
+                <button onClick={() => { setStoredApiKey(aiApiKey.trim()); setAiError(null); }} style={C.btnP}>SAVE KEY</button>
+                <button onClick={() => { clearStoredApiKey(); setAiApiKey(""); }} style={C.btnG}>CLEAR KEY</button>
               </div>
             </div>
 
