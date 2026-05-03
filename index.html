@@ -1,843 +1,204 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CI Case Workflow</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-  <style>
-    body { margin:0; font-family: Arial, sans-serif; background:#0b1220; color:#dbeafe; }
-    .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
-    .card { background:#111a2b; border:1px solid #1e2a44; border-radius:8px; padding:12px; margin-bottom:12px; }
-    input, select, textarea, button { width:100%; box-sizing:border-box; margin-top:6px; margin-bottom:10px; padding:8px; border-radius:6px; border:1px solid #2a3a5d; background:#0b1220; color:#dbeafe; }
-    button { cursor:pointer; }
-    .row { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
-    .tabs { display:flex; gap:8px; margin-bottom:12px; }
-    .tab { width:auto; padding:8px 12px; }
-    .active { border-color:#60a5fa; color:#60a5fa; }
-    .task { display:flex; gap:8px; align-items:flex-start; padding:6px 0; border-bottom:1px solid #1b2740; }
-    .muted { color:#93a4c2; font-size:12px; }
-  </style>
-</head>
-<body>
-<div id="root"></div>
-<script type="text/babel">
-const STORAGE_KEY = "ci_workflow_stable_v1";
-
-const STATUTES = {
-  "18 U.S.C. § 794": [
-    "Identify foreign contact chain",
-    "Confirm NDI involved",
-    "Document delivery/attempt evidence"
-  ],
-  "18 U.S.C. § 951": [
-    "Establish foreign direction/control",
-    "Document U.S.-based acts",
-    "Verify no AG/FARA notification"
-  ],
-  "18 U.S.C. § 1030": [
-    "Preserve forensic artifacts",
-    "Confirm unauthorized access path",
-    "Quantify loss/damage"
-  ]
-};
-
-const seedCases = [
-  { id: 1, name: "CI-2024-001", subject: "FALCON", violation: "18 U.S.C. § 794", source: "HUMINT", notes: "Initial foreign contact reporting", status: "ACTIVE" }
-];
-
-const threatEvidence = (threat) => {
-  const map = {
-    "ESPIONAGE": "Classification records, FISA collection summaries, foreign contact attribution, damage assessment memo",
-    "FIS OPERATION": "Foreign direction/tasking communications, FARA records check, source reporting, surveillance logs",
-    "CYBER CI": "SIEM/EDR logs, forensic images, attribution package, malware/toolmark analysis",
-    "FIS CONSPIRACY": "Conspiracy timeline, co-conspirator communications, financial links, overt act documentation",
-    "IDENTITY EXPOSURE": "Employee access logs, insider-threat indicators, identity compromise indicators, witness interviews",
-    "TECH TRANSFER": "Export documentation, end-user checks, BIS/OFAC coordination records, shipping and procurement records",
-    "TRANSNATIONAL THREAT": "Cross-border travel records, foreign remittance trails, liaison reporting, customs records",
-    "CI": "Predication records, communications data, interview summaries, financial and travel records",
-  };
-  return map[threat] || map.CI;
-};
-const buildTemplateElements = (statute, label, threat) => ([
-  { name: "ELEMENT 1 — Predication & Statutory Nexus", color: "#ef4444", steps: [
-    { text: `Document predication facts specifically tied to ${label}`, evidence: `Opening EC, referral package, source reporting, legal review notes for ${statute}`, day: 1, phase: "IMMEDIATE" },
-    { text: "Identify subject, co-subjects, and relevant entities tied to the statute", evidence: "Identity records, link analysis, corporate records, communication metadata", day: 1, phase: "IMMEDIATE" },
-  ]},
-  { name: "ELEMENT 2 — Conduct Evidence", color: "#f97316", steps: [
-    { text: "Establish prohibited acts and timeline under the charged statute", evidence: "Chronology, surveillance logs, seized documents, digital artifacts", day: 2, phase: "IMMEDIATE" },
-    { text: "Preserve corroborating documentary and digital evidence", evidence: "Forensic images, warrants/returns, chain-of-custody logs, subpoena returns", day: 3, phase: "IMMEDIATE" },
-  ]},
-  { name: "ELEMENT 3 — Intent / Knowledge", color: "#eab308", steps: [
-    { text: "Develop intent/knowledge indicators for willful statutory violation", evidence: "Internal communications, training acknowledgments, concealment behavior, admissions", day: 5, phase: "WEEK 1" },
-    { text: "Assess motive and benefit to subject or foreign actor", evidence: threatEvidence(threat), day: 7, phase: "WEEK 1" },
-  ]},
-  { name: "ELEMENT 4 — Charging Readiness", color: "#22c55e", steps: [
-    { text: "Map each statutory element to developed evidence and identify gaps", evidence: "Element matrix, gap analysis memo, corroboration checklist", day: 10, phase: "WEEK 2" },
-    { text: "Prepare supervisor/AUSA briefing package and charging recommendation", evidence: "Integrated case summary, evidence index, witness list, legal theory memo", day: 14, phase: "WEEK 2" },
-  ]},
-]);
-
-// Merge lite statutes into the main database
-CI_STATUTES_LITE.forEach(([key, label, threat, group]) => {
-  if (!CI_STATUTES[key]) {
-    CI_STATUTES[key] = { label, threat, group, elements: buildTemplateElements(key, label, threat) };
-  }
-});
-
-// Group order (preserves curated order in the dropdown)
-const GROUP_ORDER = [
-  "ESPIONAGE & NATIONAL DEFENSE (CH. 37)",
-  "FOREIGN RELATIONS & AGENTS (CH. 45)",
-  "SABOTAGE (CH. 105)",
-  "TREASON & SEDITION (CH. 115)",
-  "ECONOMIC ESPIONAGE & TRADE SECRETS (CH. 90)",
-  "TERRORISM (CH. 113B)",
-  "MONEY LAUNDERING & FINANCIAL",
-  "FRAUD & FALSE STATEMENTS",
-  "OBSTRUCTION",
-  "CONSPIRACY & INCHOATE",
-  "SMUGGLING & BORDER",
-  "RICO",
-  "TITLE 22 — FOREIGN RELATIONS",
-  "TITLE 50 — WAR & NATIONAL DEFENSE",
-  "TITLE 31 — BSA / FINANCIAL",
-  "TITLE 8 — IMMIGRATION",
-  "TITLE 26 — TAX",
-];
-
-// ── Universal fallback element set for any custom statute ─────────────────────
-const buildCustomElements = (statute) => [
-  { name: "ELEMENT 1 — Predication & Subject Identification", color: "#ef4444", steps: [
-    { text: `Review predication and document all facts supporting opening of ${statute} investigation`, evidence: "Opening EC, source reporting, referral documents, prior investigations, open source intelligence", day: 1, phase: "IMMEDIATE" },
-    { text: "Identify and document subject — full identity, background, and relevant history", evidence: "Criminal history, prior CI contacts, employment records, travel history, financial background", day: 1, phase: "IMMEDIATE" },
-    { text: "Identify all known associates, co-subjects, and potential co-conspirators", evidence: "Link analysis, source reporting, surveillance logs, financial records, communication records", day: 2, phase: "IMMEDIATE" },
-  ]},
-  { name: "ELEMENT 2 — Conduct / Actus Reus", color: "#f97316", steps: [
-    { text: "Document the specific prohibited conduct alleged under the statute", evidence: "Physical surveillance, digital evidence, witness statements, documentary evidence, source reporting", day: 2, phase: "IMMEDIATE" },
-    { text: "Establish timeline of conduct — when, where, and how the offense occurred", evidence: "Chronological event log, surveillance records, financial transaction timeline, communication logs", day: 3, phase: "IMMEDIATE" },
-    { text: "Preserve all physical and digital evidence of the alleged conduct", evidence: "Search warrant returns, forensic images, chain of custody documentation, evidence logs", day: 3, phase: "IMMEDIATE" },
-    { text: "Identify and interview all witnesses to the alleged conduct", evidence: "FD-302 interview summaries, grand jury testimony, victim statements, expert witness identification", day: 7, phase: "WEEK 1" },
-  ]},
-  { name: "ELEMENT 3 — Intent / Mens Rea", color: "#eab308", steps: [
-    { text: "Establish subject's knowledge and intent — willful, knowing, or reckless conduct", evidence: "Subject's own communications, prior admissions, pattern of conduct, training/indoctrination records", day: 5, phase: "WEEK 1" },
-    { text: "Document consciousness of guilt — use of tradecraft, deception, cover stories", evidence: "Surveillance of evasive behavior, alias use, encrypted communications, destruction of evidence", day: 7, phase: "WEEK 1" },
-    { text: "Assess financial motive — unexplained wealth, foreign payments, financial benefit", evidence: "Bank records, tax returns, asset checks, wire transfer records, cryptocurrency analysis", day: 7, phase: "WEEK 1" },
-  ]},
-  { name: "ELEMENT 4 — Foreign Nexus / CI Connection", color: "#06b6d4", steps: [
-    { text: "Establish connection to foreign government, FIS, or hostile actor if applicable", evidence: "HUMINT reporting, FISA collection, foreign liaison reporting, CI database traces", day: 5, phase: "WEEK 1" },
-    { text: "Document any foreign travel, meetings with FIOs, or foreign financial connections", evidence: "Passport records, CBP data, hotel records, foreign bank accounts, wire transfer records", day: 7, phase: "WEEK 1" },
-    { text: "Coordinate with relevant IC elements and interagency partners", evidence: "Interagency coordination memos, deconfliction records, liaison reporting", day: 10, phase: "WEEK 2" },
-  ]},
-  { name: "ELEMENT 5 — Prosecution Package", color: "#22c55e", steps: [
-    { text: "Draft elements memo — map each statutory element to specific evidence", evidence: "All supporting documentation organized by element for AUSA review", day: 14, phase: "WEEK 2" },
-    { text: "Assess subject's vulnerability and cooperation potential", evidence: "CI assessment, subject interview, prior criminal history, vulnerability analysis", day: 14, phase: "WEEK 2" },
-    { text: "Brief supervisor — present elements, evidence gaps, and investigative plan", evidence: "Investigative summary, elements memo, gap analysis, resource request", day: 14, phase: "WEEK 2" },
-    { text: "Brief AUSA — present full statutory elements, evidence package, and charging recommendation", evidence: "Complete investigative package: elements memo, evidence index, subject profile, financial summary", day: 21, phase: "WEEK 3" },
-  ]},
-];
-
-const PHASES = ["IMMEDIATE","WEEK 1","WEEK 2","WEEK 3"];
-const PHASE_RANGE = { IMMEDIATE:"DAY 1–3","WEEK 1":"DAY 4–7","WEEK 2":"DAY 8–14","WEEK 3":"DAY 15–21" };
-const PRIORITIES = ["CRITICAL","HIGH","MEDIUM","LOW"];
-const PCOL = { CRITICAL:"#ef4444",HIGH:"#f97316",MEDIUM:"#eab308",LOW:"#22c55e" };
-const THREAT_COL = { ESPIONAGE:"#ef4444","FIS OPERATION":"#f97316","CYBER CI":"#06b6d4","FIS CONSPIRACY":"#a855f7","IDENTITY EXPOSURE":"#ec4899","TECH TRANSFER":"#3b82f6","TRANSNATIONAL THREAT":"#f59e0b","CI":"#60a5fa" };
-const TIERS = ["PRELIMINARY","GUARDIAN","FULL"];
-const TIER_DESC = {
-  PRELIMINARY: "Allegation/info indicating possible criminal/NS threat. Limited methods, defined duration.",
-  GUARDIAN:    "Lead/threat resolution. Limited duration. Database/records, limited interviews.",
-  FULL:        "Articulable factual basis. Full methods authorized (with required approvals).",
-};
-const TIER_COL = { PRELIMINARY:"#eab308", GUARDIAN:"#06b6d4", FULL:"#ef4444" };
-const TABS = ["INTAKE","TASKS","BRIEFING","AI ANALYSIS"];
-
-const buildTasks = (violations) => {
-  // violations: array of statute keys
-  const list = (Array.isArray(violations) ? violations : [violations]).filter(Boolean);
-  const all = [];
-  list.forEach(v => {
-    const def = CI_STATUTES[v];
-    const elements = (def && def.elements) ? def.elements : buildCustomElements(v || "Custom Statute");
-    elements.forEach((el, ei) => {
-      el.steps.forEach((s, si) => {
-        all.push({
-          ...s,
-          id: `${Date.now()}-${v.replace(/\W+/g,"_")}-${ei}-${si}-${Math.random().toString(36).slice(2,7)}`,
-          done: false,
-          elementName: list.length > 1 ? `[${v}] ${el.name}` : el.name,
-          elementColor: el.color,
-          elementIdx: ei,
-          statute: v,
-        });
-      });
-    });
-  });
-  return all;
-};
-
-const primaryThreat = (violations) => {
-  if (!violations || !violations.length) return "CI";
-  // Pick highest-severity threat present
-  const order = ["ESPIONAGE","IDENTITY EXPOSURE","TRANSNATIONAL THREAT","FIS CONSPIRACY","FIS OPERATION","TECH TRANSFER","CYBER CI","CI"];
-  const threats = violations.map(v => CI_STATUTES[v]?.threat || "CI");
-  for (const t of order) if (threats.includes(t)) return t;
-  return "CI";
-};
-
-const SEED = [
-  { id:1, name:"CI-2024-001", subject:"FALCON",     violations:["18 U.S.C. § 794"], priority:"CRITICAL", sol:"2027-03-15", source:"HUMINT/SIGINT", status:"ACTIVE", notes:"PRC handler contact confirmed via FISA",  threat:"ESPIONAGE",   tier:"FULL",        aiAnalysis:null },
-  { id:2, name:"CI-2024-002", subject:"NIGHTSHADE", violations:["18 U.S.C. § 951"], priority:"HIGH",     sol:"2027-06-01", source:"SIGINT",        status:"ACTIVE", notes:"FARA non-compliance confirmed, SVR nexus", threat:"FIS OPERATION", tier:"PRELIMINARY", aiAnalysis:null },
-];
-
-// ── AI Analysis ───────────────────────────────────────────────────────────────
-async function generateAIAnalysis({ tier, violations, subject, source, notes, completedSteps, openSteps }) {
-  const statuteList = violations.map(v => `${v} — ${CI_STATUTES[v]?.label || v}`).join("\n");
-  const completedSummary = completedSteps.slice(0, 12).map(s => `✓ ${s.elementName}: ${s.text}`).join("\n") || "(none recorded)";
-  const openSummary = openSteps.slice(0, 12).map(s => `○ ${s.elementName}: ${s.text}`).join("\n") || "(none recorded)";
-
-  const systemPrompt = `You are a senior FBI Counterintelligence advisor producing decision-support analysis for a Special Agent. Output STRICT JSON only — no preamble, no markdown fences, no commentary outside the JSON object.
-
-You are familiar with the Attorney General's Guidelines for Domestic FBI Operations (AGG-Dom) and the Domestic Investigations and Operations Guide (DIOG) tier framework:
-- ASSESSMENT: lowest tier, no specific factual predication required, limited methods
-- PRELIMINARY INVESTIGATION: information/allegation indicating possible criminal or NS threat; most non-sensitive methods authorized; defined duration
-- GUARDIAN: lead/threat assessment, narrow scope, short duration, limited methods
-- FULL INVESTIGATION: articulable factual basis of criminal/NS threat; full methods including FISA, Title III, UCO, sensitive techniques (with approvals)
-
-CRITICAL RULES:
-1. Tailor authorized methods strictly to the tier the user provided. Do NOT recommend Full-tier methods (FISA, Title III, UCOs, undisclosed participation in religious/political org meetings, etc.) for Preliminary or Guardian tiers.
-2. Always note that any sensitive investigative matter, sensitive technique, FISA, Title III, undercover operation, or undisclosed participation requires written approval per AGG-Dom/DIOG — do not imply field agent discretion.
-3. Cross-reference multiple statutes when provided — surface the strongest charging theory and any synergies.
-4. Be specific and operational. Cite typical coordination partners (USAO/NSD, CDC, SSA, FBI HQ, IC partners like NSA/CIA/NCSC, regulators like OFAC/BIS/DDTC, FinCEN, CISA, CBP/HSI) where relevant.
-5. NEVER produce false statements about law or procedure. If a method's availability depends on facts you don't have, say so.
-
-Return JSON with this exact shape:
-{
-  "tier_assessment": "string — 1-2 sentences confirming the tier is appropriate or recommending escalation/de-escalation given the predication",
-  "next_steps": [{"priority":"HIGH|MEDIUM|LOW", "action":"string", "rationale":"string", "approval_required":"string or null"}],
-  "authorized_methods": [{"method":"string", "tier_appropriate":true|false, "approval_required":"string or null", "notes":"string"}],
-  "collection_gaps": [{"gap":"string", "why_it_matters":"string", "how_to_close":"string"}],
-  "coordination": [{"partner":"string", "purpose":"string", "timing":"string"}],
-  "escalation_triggers": ["string"],
-  "elements_checklist": [{"statute":"string", "element":"string", "evidence_needed":"string", "status":"DEVELOPED|PARTIAL|GAP"}]
-}`;
-
-  const userPrompt = `INVESTIGATIVE TIER: ${tier}
-
-STATUTE(S) UNDER INVESTIGATION:
-${statuteList}
-
-SUBJECT: ${subject || "(not provided)"}
-SOURCE/PREDICATION CHANNEL: ${source || "(not provided)"}
-PREDICATION NARRATIVE: ${notes || "(not provided)"}
-
-EVIDENCE/STEPS COMPLETED TO DATE:
-${completedSummary}
-
-OUTSTANDING STEPS:
-${openSummary}
-
-Produce the JSON analysis now.`;
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4000,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }],
-    }),
-  });
-
-function load() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch (_) {
-    return null;
-  }
-}
-
-function save(data) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (_) {}
-}
-
-function App() {
-  const [tab, setTab] = React.useState("intake");
-  const [cases, setCases] = React.useState([]);
-  const [tasks, setTasks] = React.useState({});
-  const [selectedId, setSelectedId] = React.useState(null);
-  const [form, setForm] = React.useState({ name:"", subject:"", violation:"18 U.S.C. § 794", source:"", notes:"", status:"ACTIVE" });
-
-  React.useEffect(() => {
-    const data = load();
-    if (data && data.cases && data.tasks) {
-      setCases(data.cases);
-      setTasks(data.tasks);
-      setSelectedId(data.cases[0] ? data.cases[0].id : null);
-      return;
-    }
-    const initialTasks = { 1: buildTasks(seedCases[0].violation) };
-    setCases(seedCases);
-    setTasks(initialTasks);
-    setSelectedId(1);
-    save({ cases: seedCases, tasks: initialTasks });
-  }, []);
-
-  function persist(nextCases, nextTasks) {
-    setCases(nextCases);
-    setTasks(nextTasks);
-    save({ cases: nextCases, tasks: nextTasks });
-  }
-
-  function addCase() {
-    if (!form.name.trim()) return;
-    const id = Date.now();
-    const threat = primaryThreat(violations);
-    const nc = { ...form, violations, id, threat, aiAnalysis:null };
-    delete nc.customViolation;
-    const nt = buildTasks(violations);
-    const newCases = [...cases, nc];
-    const newTasks = { ...caseTasks, [id]: nt };
-    setCases(newCases); setCaseTasks(newTasks); persist(newCases, newTasks);
-    setForm({ name:"", subject:"", violations:[], customViolation:"", priority:"HIGH", sol:"", source:"", status:"ACTIVE", notes:"", tier:"PRELIMINARY" });
-    setShowForm(false);
-    setSelId(id); setBriefId(id); setAiCaseId(id);
-    setTab(1);
-  };
-
-  const deleteCase = (id) => {
-    const newCases = cases.filter(c=>c.id!==id);
-    const newTasks = {...caseTasks}; delete newTasks[id];
-    setCases(newCases); setCaseTasks(newTasks); persist(newCases,newTasks);
-    if(selId===id) setSelId(newCases[0]?.id||null);
-    if(briefId===id) setBriefId(newCases[0]?.id||null);
-    if(aiCaseId===id) setAiCaseId(newCases[0]?.id||null);
-  };
-
-  const toggle = (caseId, taskId) => {
-    const newTasks = {...caseTasks,[caseId]:caseTasks[caseId].map(t=>t.id===taskId?{...t,done:!t.done}:t)};
-    setCaseTasks(newTasks); persist(cases,newTasks);
-  };
-  const setPhaseCompletion = (caseId, phaseName, doneValue) => {
-    const existing = caseTasks[caseId] || [];
-    const updated = existing.map(t => t.phase === phaseName ? { ...t, done: doneValue } : t);
-    const newTasks = { ...caseTasks, [caseId]: updated };
-    setCaseTasks(newTasks); persist(cases, newTasks);
-  };
-
-  const updateCaseTier = (caseId, tier) => {
-    const newCases = cases.map(c => c.id === caseId ? { ...c, tier } : c);
-    setCases(newCases); persist(newCases, caseTasks);
-  };
-
-  const runAI = async () => {
-    const c = cases.find(x => x.id === aiCaseId);
-    if (!c) return;
-    setAiLoading(true); setAiError(null);
-    try {
-      const tasks = caseTasks[c.id] || [];
-      const completedSteps = tasks.filter(t => t.done);
-      const openSteps = tasks.filter(t => !t.done);
-      const result = await generateAIAnalysis({
-        tier: c.tier || "PRELIMINARY",
-        violations: c.violations || [],
-        subject: c.subject,
-        source: c.source,
-        notes: c.notes,
-        completedSteps, openSteps,
-      });
-      const newCases = cases.map(x => x.id === c.id ? { ...x, aiAnalysis: { generatedAt: new Date().toISOString(), result } } : x);
-      setCases(newCases); persist(newCases, caseTasks);
-    } catch (err) {
-      setAiError(String(err.message || err));
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  const solDays = s => s ? Math.ceil((new Date(s)-new Date())/86400000) : null;
-  const sc = cases.find(c=>c.id===selId);
-  const sTasks = caseTasks[selId]||[];
-  const pTasks = sTasks.filter(t=>t.phase===phase);
-  const done = sTasks.filter(t=>t.done).length;
-  const pct = sTasks.length ? Math.round((done/sTasks.length)*100) : 0;
-  const bc = cases.find(c=>c.id===briefId);
-  const bTasks = caseTasks[briefId]||[];
-  const ac = cases.find(c=>c.id===aiCaseId);
-
-  const elGroups = {};
-  pTasks.forEach(t=>{ if(!elGroups[t.elementName]) elGroups[t.elementName]=[]; elGroups[t.elementName].push(t); });
-
-  // Group statutes for the dropdown
-  const statutesByGroup = {};
-  Object.entries(CI_STATUTES).forEach(([k,v]) => {
-    const g = v.group || "OTHER";
-    if (!statutesByGroup[g]) statutesByGroup[g] = [];
-    statutesByGroup[g].push([k, v.label]);
-  });
-
-  function toggleTask(caseId, taskId) {
-    const caseTasks = tasks[caseId] || [];
-    const nextTasks = {
-      ...tasks,
-      [caseId]: caseTasks.map(t => t.id === taskId ? { ...t, done: !t.done } : t)
-    };
-    persist(cases, nextTasks);
-  }
-
-  const selectedCase = cases.find(c => c.id === selectedId) || null;
-  const selectedTasks = selectedCase ? (tasks[selectedCase.id] || []) : [];
-  const completed = selectedTasks.filter(t => t.done).length;
-  const pct = selectedTasks.length ? Math.round((completed / selectedTasks.length) * 100) : 0;
-
-  return (
-    <div className="wrap">
-      <h2 style={{marginTop:0}}>CI Workflow (Stable Build)</h2>
-      <div className="tabs">
-        <button className={`tab ${tab==="intake"?"active":""}`} onClick={() => setTab("intake")}>Intake</button>
-        <button className={`tab ${tab==="tasks"?"active":""}`} onClick={() => setTab("tasks")}>Tasks</button>
-        <button className={`tab ${tab==="brief"?"active":""}`} onClick={() => setTab("brief")}>Briefing</button>
-      </div>
-
-      {tab === "intake" && (
-        <div className="card">
-          <h3>Open Case</h3>
-          <div className="row">
-            <div><label>Case Name</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} /></div>
-            <div><label>Subject</label><input value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})} /></div>
-          </div>
-        )}
-
-        {/* ── TASKS ── */}
-        {tab===1 && (
-          <div>
-            <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-              {cases.map(c=>(
-                <button key={c.id} onClick={()=>setSelId(c.id)} style={{...C.pill,...(selId===c.id?C.pillOn:{})}}>
-                  <span style={{width:6,height:6,borderRadius:"50%",background:PCOL[c.priority],display:"inline-block",marginRight:5}}/>
-                  {c.name}
-                </button>
-              ))}
-            </div>
-            {sc ? (
-              <>
-                <div style={C.progCard}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
-                    <div>
-                      <div style={C.cName}>{sc.name} — {sc.subject}</div>
-                      <div style={{fontSize:9,color:"#2d506e",marginTop:2}}>
-                        {(sc.violations || (sc.violation ? [sc.violation] : [])).join(" · ")}
-                      </div>
-                      <div style={{marginTop:6}}>
-                        {TIERS.map(t=>(
-                          <button key={t} onClick={()=>updateCaseTier(sc.id,t)} style={{...C.pill,...(sc.tier===t?{...C.pillOn,borderColor:TIER_COL[t],color:TIER_COL[t]}:{}),fontSize:8,padding:"4px 8px",marginRight:4}}>{t}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:30,fontWeight:"bold",color:pct===100?"#22c55e":"#60a5fa",lineHeight:1}}>{pct}%</div>
-                      <div style={{fontSize:8,color:"#1e3a5f"}}>{done}/{sTasks.length} COMPLETE</div>
-                    </div>
-                  </div>
-                  <div style={{height:6,background:"#0a1525",borderRadius:3}}>
-                    <div style={{width:`${pct}%`,height:"100%",background:pct===100?"linear-gradient(90deg,#22c55e,#16a34a)":"linear-gradient(90deg,#2563eb,#1d4ed8)",borderRadius:3,transition:"width .5s"}}/>
-                  </div>
-                </div>
-
-                <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-                  {PHASES.map(ph=>{
-                    const phT=sTasks.filter(t=>t.phase===ph);
-                    const phD=phT.filter(t=>t.done).length;
-                    const allDone=phT.length>0&&phD===phT.length;
-                    return (
-                      <button key={ph} onClick={()=>setPhase(ph)} style={{...C.phBtn,...(phase===ph?(allDone?C.phDone:C.phOn):{})}}>
-                        {allDone&&<span style={{color:"#22c55e",marginRight:3}}>✓</span>}
-                        {ph}<span style={C.phCnt}>{phD}/{phT.length}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div style={{fontSize:8,color:"#1e3a5f",letterSpacing:2,marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
-                  <span>// {PHASE_RANGE[phase]}</span><span style={{flex:1,borderTop:"1px solid #0a1525"}}/>
-                </div>
-                <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-                  <button onClick={()=>setPhaseCompletion(selId,phase,true)} style={{...C.btnP,padding:"6px 10px",fontSize:8}}>MARK PHASE COMPLETE</button>
-                  <button onClick={()=>setPhaseCompletion(selId,phase,false)} style={{...C.btnG,padding:"6px 10px",fontSize:8}}>RESET PHASE</button>
-                </div>
-
-                {Object.entries(elGroups).map(([elName,steps])=>{
-                  const elDone=steps.filter(t=>t.done).length;
-                  const elPct=Math.round((elDone/steps.length)*100);
-                  const isCollapsed=collapsed[elName];
-                  const elColor=steps[0]?.elementColor||"#2563eb";
-                  return (
-                    <div key={elName} style={{...C.elGroup,borderLeftColor:elColor}}>
-                      <div onClick={()=>setCollapsed(p=>({...p,[elName]:!p[elName]}))} style={C.elHdr}>
-                        <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
-                          <div style={{width:30,height:30,borderRadius:4,background:elPct===100?"#0a2018":"#0a1525",border:`1px solid ${elPct===100?"#22c55e":elColor+"55"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:elPct===100?13:11,color:elPct===100?"#22c55e":elColor,flexShrink:0}}>
-                            {elPct===100?"✓":"⬡"}
-                          </div>
-                          <div>
-                            <div style={{fontSize:10,fontWeight:"bold",color:"#b8d0e8",letterSpacing:1}}>{elName}</div>
-                            <div style={{fontSize:8,color:"#1e3a5f",marginTop:2}}>{elDone}/{steps.length} SUB-STEPS · {elPct}% PROVEN</div>
-                          </div>
-                        </div>
-                        <div style={{display:"flex",alignItems:"center",gap:10}}>
-                          <div style={{width:70,height:3,background:"#0a1525",borderRadius:2}}><div style={{width:`${elPct}%`,height:"100%",background:elPct===100?"#22c55e":elColor,borderRadius:2}}/></div>
-                          <span style={{fontSize:11,color:"#1e3a5f"}}>{isCollapsed?"▸":"▾"}</span>
-                        </div>
-                      </div>
-                      {!isCollapsed && steps.map((step,si)=>(
-                        <div key={step.id}>
-                          <div onClick={()=>toggle(selId,step.id)}
-                            style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",borderBottom:"1px solid #080f1c",cursor:"pointer",transition:"background .15s",background:step.done?"#060a12":"#080f1c",opacity:step.done?0.5:1,userSelect:"none"}}
-                            onMouseEnter={e=>!step.done&&(e.currentTarget.style.background="#0b1828")}
-                            onMouseLeave={e=>!step.done&&(e.currentTarget.style.background="#080f1c")}>
-                            <div style={{fontSize:8,color:"#1e3a5f",minWidth:22,flexShrink:0}}>{String(si+1).padStart(2,"0")}</div>
-                            <div style={chk(step.done,elColor)} onClick={e=>{e.stopPropagation();toggle(selId,step.id);}}>
-                              {step.done&&<span style={{fontSize:13,color:"#22c55e",fontWeight:"bold"}}>✓</span>}
-                            </div>
-                            <div style={{flex:1}}>
-                              <div style={{fontSize:12,color:step.done?"#1e3a5f":"#c8dcea",textDecoration:step.done?"line-through":"none",marginBottom:4,lineHeight:1.5}}>{step.text}</div>
-                              <div style={{fontSize:8,color:"#1e3a5f"}}>TARGET: DAY {step.day}</div>
-                            </div>
-                            <div onClick={e=>{e.stopPropagation();setExpandedStep(expandedStep===step.id?null:step.id);}}
-                              style={{...C.evBtn,borderColor:expandedStep===step.id?elColor:"#0e1e30",color:expandedStep===step.id?elColor:"#1e3a5f"}}>
-                              {expandedStep===step.id?"▲ EVD":"▼ EVD"}
-                            </div>
-                          </div>
-                          {expandedStep===step.id&&(
-                            <div style={{...C.evPanel,borderLeftColor:elColor}}>
-                              <div style={{fontSize:8,color:elColor,letterSpacing:2,marginBottom:8}}>◈ REQUIRED EVIDENCE</div>
-                              {step.evidence.split(", ").map((e,i)=>(
-                                <div key={i} style={{display:"flex",gap:6,marginBottom:5}}>
-                                  <span style={{color:elColor,flexShrink:0,fontSize:9}}>▸</span>
-                                  <span style={{fontSize:11,color:"#7090a8",lineHeight:1.5}}>{e}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
-                {pTasks.length===0&&<div style={{fontSize:12,color:"#1e3a5f",textAlign:"center",padding:"30px 0",fontStyle:"italic"}}>No tasks for this phase.</div>}
-              </>
-            ):(
-              <div style={{fontSize:12,color:"#1e3a5f",textAlign:"center",padding:"50px 0",fontStyle:"italic"}}>Select a case above or open one from Intake.</div>
-            )}
-          </div>
-        )}
-
-        {/* ── BRIEFING ── */}
-        {tab===2 && (
-          <div>
-            <div style={{marginBottom:16}}>
-              <div style={C.lbl}>SELECT CASE</div>
-              <select value={briefId||""} onChange={e=>setBriefId(Number(e.target.value))} style={{...C.inp,width:"100%"}}>
-                {cases.map(c=>{
-                  const violations = c.violations || (c.violation ? [c.violation] : []);
-                  const vSummary = violations.length === 1 ? violations[0] : `${violations.length} statutes`;
-                  return <option key={c.id} value={c.id}>{c.name} — {c.subject} — {vSummary}</option>;
-                })}
-              </select>
-            </div>
-            {bc&&(()=>{
-              const sol=solDays(bc.sol);
-              const bd=bTasks.filter(t=>t.done).length;
-              const bp=bTasks.length?Math.round((bd/bTasks.length)*100):0;
-              const pending=bTasks.filter(t=>!t.done&&t.phase==="IMMEDIATE");
-              const elNames=[...new Set(bTasks.map(t=>t.elementName))];
-              const violations = bc.violations || (bc.violation ? [bc.violation] : []);
-              return (
-                <>
-                  <div style={C.briefCard}>
-                    <div style={C.briefTitle}>▸ SUPERVISOR BRIEFING — {bc.name} / {bc.subject}</div>
-                    {[
-                      ["STATUTE(S)", violations.join(" · ") || "—"],
-                      ["TIER", bc.tier || "PRELIMINARY"],
-                      ["SUBJECT ID", bc.subject||"—"],
-                      ["THREAT", bc.threat||"CI"],
-                      ["SOURCE", `${bc.source||"—"}${bc.notes?" — "+bc.notes:""}`],
-                      ["STATUS", bc.status],
-                      ["PRIORITY", bc.priority]
-                    ].map(([l,v])=>(
-                      <div key={l} style={{display:"flex",marginBottom:10,gap:14}}>
-                        <div style={{fontSize:8,color:"#1e3a5f",letterSpacing:1,minWidth:120}}>{l}</div>
-                        <div style={{fontSize:11,color:"#c8dcea"}}>{v}</div>
-                      </div>
-                    ))}
-                    {sol!==null&&(
-                      <div style={{display:"flex",marginBottom:10,gap:14}}>
-                        <div style={{fontSize:8,color:"#1e3a5f",letterSpacing:1,minWidth:120}}>SOL REMAINING</div>
-                        <div style={{fontSize:11}}><span style={{color:"#c8dcea"}}>{bc.sol}</span><span style={{marginLeft:8,color:sol<90?"#ef4444":"#22c55e",fontSize:10}}>[{sol} DAYS]</span></div>
-                      </div>
-                    )}
-                    <div style={{display:"flex",marginBottom:12,gap:14}}>
-                      <div style={{fontSize:8,color:"#1e3a5f",letterSpacing:1,minWidth:120}}>COMPLETION</div>
-                      <div style={{flex:1,display:"flex",alignItems:"center",gap:8}}>
-                        <div style={{flex:1,height:4,background:"#0a1525",borderRadius:2}}><div style={{width:`${bp}%`,height:"100%",background:bp===100?"#22c55e":"#2563eb",borderRadius:2}}/></div>
-                        <span style={{fontSize:10,color:"#60a5fa"}}>{bd}/{bTasks.length} ({bp}%)</span>
-                      </div>
-                    </div>
-                    {elNames.length>0&&(
-                      <div style={{borderTop:"1px solid #0a1525",paddingTop:12,marginTop:4}}>
-                        <div style={{fontSize:8,color:"#1e3a5f",letterSpacing:2,marginBottom:10}}>ELEMENT STATUS</div>
-                        {elNames.map((elName,i)=>{
-                          const elT=bTasks.filter(t=>t.elementName===elName);
-                          const elD=elT.filter(t=>t.done).length;
-                          const elP=elT.length?Math.round((elD/elT.length)*100):0;
-                          const elColor=elT[0]?.elementColor||"#2563eb";
-                          return (
-                            <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                              <div style={{width:18,height:18,border:`1px solid ${elP===100?"#22c55e":elColor+"55"}`,background:elP===100?"#0a2018":"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#22c55e",flexShrink:0}}>{elP===100?"✓":""}</div>
-                              <div style={{flex:1}}>
-                                <div style={{fontSize:9,color:"#7090a8",marginBottom:2}}>{elName}</div>
-                                <div style={{height:3,background:"#0a1525",borderRadius:2}}><div style={{width:`${elP}%`,height:"100%",background:elP===100?"#22c55e":elColor,borderRadius:2}}/></div>
-                              </div>
-                              <span style={{fontSize:9,color:elP===100?"#22c55e":"#1e3a5f",minWidth:55,textAlign:"right"}}>{elD}/{elT.length} · {elP}%</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {pending.length>0&&(
-                      <div style={{borderTop:"1px solid #0a1525",paddingTop:12,marginTop:4}}>
-                        <div style={{fontSize:8,color:"#1e3a5f",letterSpacing:2,marginBottom:8}}>IMMEDIATE ACTIONS OUTSTANDING</div>
-                        {pending.map(t=><div key={t.id} style={{fontSize:10,color:"#f59e0b",marginBottom:4}}>▸ {t.text}</div>)}
-                      </div>
-                    )}
-                    {bc.aiAnalysis?.result?.tier_assessment && (
-                      <div style={{borderTop:"1px solid #0a1525",paddingTop:12,marginTop:4}}>
-                        <div style={{fontSize:8,color:"#1e3a5f",letterSpacing:2,marginBottom:8}}>AI TIER ASSESSMENT</div>
-                        <div style={{fontSize:11,color:"#c8dcea",lineHeight:1.6}}>{bc.aiAnalysis.result.tier_assessment}</div>
-                      </div>
-                    )}
-                  </div>
-                  <div style={{...C.briefCard,borderColor:"#0e1e30",borderLeftColor:"#2563eb",borderLeftWidth:3,boxShadow:"none"}}>
-                    <div style={C.lbl}>VERBAL RATIONALE</div>
-                    <div style={{fontSize:11,color:"#c8dcea",lineHeight:2,fontStyle:"italic",marginTop:8}}>
-                      "We opened {bc.name} on subject {bc.subject} as a {bc.tier||"PRELIMINARY"} investigation based on {bc.source||"[source]"} predication indicating potential violation(s) of {violations.join(", ")||"[statute]"}.{sol?` SOL expires in ${sol} days.`:""} Element completion stands at {bp}%{pending.length?`, with ${pending.length} immediate sub-steps outstanding`:""}.{bc.notes?` Predication: ${bc.notes}.`:""}"
-                    </div>
-                  </div>
-                </>
-              );
-            })()}
-            {!bc&&<div style={{fontSize:12,color:"#1e3a5f",textAlign:"center",padding:"50px 0",fontStyle:"italic"}}>No cases available.</div>}
-          </div>
-        )}
-
-        {/* ── AI ANALYSIS ── */}
-        {tab===3 && (
-          <div>
-            <div style={C.warn}>
-              ⚠ DECISION-SUPPORT DRAFT — NOT LEGAL AUTHORIZATION. All investigative methods require written approval per AGG-Dom/DIOG. Coordinate with CDC/SSA/USAO before execution. Output is AI-generated and must be reviewed by qualified personnel.
-            </div>
-
-            <div style={{marginBottom:16}}>
-              <div style={C.lbl}>SELECT CASE FOR AI ANALYSIS</div>
-              <select value={aiCaseId||""} onChange={e=>setAiCaseId(Number(e.target.value))} style={{...C.inp,width:"100%"}}>
-                {cases.map(c=>{
-                  const violations = c.violations || (c.violation ? [c.violation] : []);
-                  return <option key={c.id} value={c.id}>{c.name} — {c.subject} — {c.tier||"PRELIMINARY"} — {violations.length===1?violations[0]:`${violations.length} statutes`}</option>;
-                })}
-              </select>
-            </div>
-
-            {ac && (
-              <>
-                <div style={C.aiBox}>
-                  <div style={C.aiHdr}>▸ AI ANALYSIS INPUTS</div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-                    <div>
-                      <div style={C.lbl}>CASE</div>
-                      <div style={{fontSize:11,color:"#c8dcea"}}>{ac.name} — {ac.subject}</div>
-                    </div>
-                    <div>
-                      <div style={C.lbl}>TIER</div>
-                      <div style={{fontSize:11,color:TIER_COL[ac.tier||"PRELIMINARY"],fontWeight:"bold"}}>{ac.tier||"PRELIMINARY"}</div>
-                    </div>
-                  </div>
-                  <div style={{marginBottom:10}}>
-                    <div style={C.lbl}>STATUTES</div>
-                    <div>
-                      {(ac.violations||[]).map(v=>{
-                        const def = CI_STATUTES[v];
-                        const color = THREAT_COL[def?.threat] || "#60a5fa";
-                        return <span key={v} style={C.chip(color)}>{def?.label || v}</span>;
-                      })}
-                    </div>
-                  </div>
-                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                    <button onClick={runAI} disabled={aiLoading} style={{...C.btnP,opacity:aiLoading?0.5:1,cursor:aiLoading?"wait":"pointer"}}>
-                      {aiLoading ? "▸ ANALYZING..." : (ac.aiAnalysis ? "↻ RE-RUN ANALYSIS" : "▸ GENERATE NEXT STEPS & GAP ANALYSIS")}
-                    </button>
-                    {ac.aiAnalysis?.generatedAt && (
-                      <span style={{fontSize:8,color:"#1e3a5f",letterSpacing:1}}>
-                        LAST RUN: {new Date(ac.aiAnalysis.generatedAt).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                  {aiError && (
-                    <div style={{marginTop:10,padding:"10px 12px",background:"#3a0a0a",border:"1px solid #ef4444",color:"#fca5a5",fontSize:10}}>
-                      ERROR: {aiError}
-                    </div>
-                  )}
-                </div>
-
-                {ac.aiAnalysis?.result && (() => {
-                  const r = ac.aiAnalysis.result;
-                  const tierC = TIER_COL[ac.tier||"PRELIMINARY"];
-                  return (
-                    <div style={C.aiBox}>
-                      <div style={C.aiHdr}>▸ ANALYSIS OUTPUT</div>
-
-                      {r.tier_assessment && (
-                        <div style={C.aiSection}>
-                          <div style={C.aiSectionTitle}>◈ TIER ASSESSMENT</div>
-                          <div style={{...C.aiItem,borderLeft:`3px solid ${tierC}`}}>{r.tier_assessment}</div>
-                        </div>
-                      )}
-
-                      {r.next_steps?.length > 0 && (
-                        <div style={C.aiSection}>
-                          <div style={C.aiSectionTitle}>◈ RECOMMENDED NEXT STEPS</div>
-                          {r.next_steps.map((s,i)=>(
-                            <div key={i} style={{...C.aiItem,borderLeft:`3px solid ${PCOL[s.priority]||"#2563eb"}`}}>
-                              <div style={{display:"flex",gap:8,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
-                                <span style={badge(PCOL[s.priority]||"#60a5fa")}>{s.priority||"—"}</span>
-                                <span style={{fontWeight:"bold",color:"#b8d0e8"}}>{s.action}</span>
-                              </div>
-                              <div style={{fontSize:10,color:"#7090a8",marginBottom:s.approval_required?6:0}}>{s.rationale}</div>
-                              {s.approval_required && (
-                                <div style={{fontSize:9,color:"#f59e0b",letterSpacing:1}}>⚠ APPROVAL: {s.approval_required}</div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {r.authorized_methods?.length > 0 && (
-                        <div style={C.aiSection}>
-                          <div style={C.aiSectionTitle}>◈ AUTHORIZED METHODS (TIER-SCOPED)</div>
-                          {r.authorized_methods.map((m,i)=>(
-                            <div key={i} style={{...C.aiItem,borderLeft:`3px solid ${m.tier_appropriate?"#22c55e":"#ef4444"}`}}>
-                              <div style={{display:"flex",gap:8,marginBottom:4,alignItems:"center",flexWrap:"wrap"}}>
-                                <span style={{fontWeight:"bold",color:"#b8d0e8"}}>{m.method}</span>
-                                <span style={badge(m.tier_appropriate?"#22c55e":"#ef4444")}>
-                                  {m.tier_appropriate ? "TIER-APPROPRIATE" : "REQUIRES ESCALATION"}
-                                </span>
-                              </div>
-                              {m.notes && <div style={{fontSize:10,color:"#7090a8",marginBottom:m.approval_required?4:0}}>{m.notes}</div>}
-                              {m.approval_required && (
-                                <div style={{fontSize:9,color:"#f59e0b",letterSpacing:1}}>⚠ APPROVAL: {m.approval_required}</div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {r.collection_gaps?.length > 0 && (
-                        <div style={C.aiSection}>
-                          <div style={C.aiSectionTitle}>◈ CRITICAL COLLECTION GAPS</div>
-                          {r.collection_gaps.map((g,i)=>(
-                            <div key={i} style={{...C.aiItem,borderLeft:"3px solid #f59e0b"}}>
-                              <div style={{fontWeight:"bold",color:"#fcd34d",marginBottom:4}}>{g.gap}</div>
-                              <div style={{fontSize:10,color:"#7090a8",marginBottom:4}}><span style={{color:"#1e3a5f"}}>WHY:</span> {g.why_it_matters}</div>
-                              <div style={{fontSize:10,color:"#7090a8"}}><span style={{color:"#1e3a5f"}}>CLOSE BY:</span> {g.how_to_close}</div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {r.coordination?.length > 0 && (
-                        <div style={C.aiSection}>
-                          <div style={C.aiSectionTitle}>◈ COORDINATION REQUIREMENTS</div>
-                          {r.coordination.map((c,i)=>(
-                            <div key={i} style={{...C.aiItem,borderLeft:"3px solid #06b6d4"}}>
-                              <div style={{display:"flex",gap:8,marginBottom:4,flexWrap:"wrap"}}>
-                                <span style={{fontWeight:"bold",color:"#06b6d4"}}>{c.partner}</span>
-                                <span style={{fontSize:9,color:"#1e3a5f",letterSpacing:1}}>· {c.timing}</span>
-                              </div>
-                              <div style={{fontSize:10,color:"#7090a8"}}>{c.purpose}</div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {r.escalation_triggers?.length > 0 && (
-                        <div style={C.aiSection}>
-                          <div style={C.aiSectionTitle}>◈ ESCALATION TRIGGERS</div>
-                          {r.escalation_triggers.map((t,i)=>(
-                            <div key={i} style={{...C.aiItem,borderLeft:"3px solid #ef4444"}}>▸ {t}</div>
-                          ))}
-                        </div>
-                      )}
-
-                      {r.elements_checklist?.length > 0 && (
-                        <div style={C.aiSection}>
-                          <div style={C.aiSectionTitle}>◈ STATUTE-SPECIFIC ELEMENT CHECKLIST</div>
-                          {r.elements_checklist.map((e,i)=>{
-                            const sCol = e.status==="DEVELOPED"?"#22c55e":e.status==="PARTIAL"?"#eab308":"#ef4444";
-                            return (
-                              <div key={i} style={{...C.aiItem,borderLeft:`3px solid ${sCol}`}}>
-                                <div style={{display:"flex",gap:8,marginBottom:4,flexWrap:"wrap",alignItems:"center"}}>
-                                  <span style={badge(sCol)}>{e.status}</span>
-                                  <span style={{fontSize:9,color:"#1e3a5f",letterSpacing:1}}>{e.statute}</span>
-                                </div>
-                                <div style={{color:"#b8d0e8",fontWeight:"bold",marginBottom:4}}>{e.element}</div>
-                                <div style={{fontSize:10,color:"#7090a8"}}><span style={{color:"#1e3a5f"}}>EVIDENCE NEEDED:</span> {e.evidence_needed}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                {!ac.aiAnalysis && !aiLoading && (
-                  <div style={{fontSize:11,color:"#1e3a5f",textAlign:"center",padding:"40px 20px",fontStyle:"italic",border:"1px dashed #0a1525",background:"#070e1c"}}>
-                    No analysis generated yet for this case. Click "GENERATE NEXT STEPS & GAP ANALYSIS" above.<br/><br/>
-                    Analysis is tier-scoped: <span style={{color:TIER_COL[ac.tier||"PRELIMINARY"]}}>{ac.tier||"PRELIMINARY"}</span> tier methods only.
-                  </div>
-                )}
-              </>
-            )}
-            {!ac && <div style={{fontSize:12,color:"#1e3a5f",textAlign:"center",padding:"50px 0",fontStyle:"italic"}}>No cases available.</div>}
-          </div>
-        </div>
-      )}
-
-      {tab === "brief" && (
-        <div className="card">
-          <label>Select Case</label>
-          <select value={selectedId || ""} onChange={e=>setSelectedId(Number(e.target.value))}>
-            {cases.map(c => <option key={c.id} value={c.id}>{c.name} — {c.subject || "N/A"}</option>)}
-          </select>
-          {selectedCase && (
-            <>
-              <p><b>Subject:</b> {selectedCase.subject || "N/A"}</p>
-              <p><b>Statute:</b> {selectedCase.violation}</p>
-              <p><b>Source:</b> {selectedCase.source || "N/A"}</p>
-              <p><b>Status:</b> {selectedCase.status}</p>
-              <p><b>Predication:</b> {selectedCase.notes || "N/A"}</p>
-              <p><b>Progress:</b> {completed}/{selectedTasks.length} ({pct}%)</p>
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-</script>
-</body>
-</html>
+diff --git a/index.html b/index.html
+index 94811cabba034a7b26f60aac61e4583e337237bf..4ffaedde5d2eb5b28535e46d55e9e0c80dc9447b 100644
+--- a/index.html
++++ b/index.html
+@@ -361,54 +361,86 @@ const CI_STATUTES_LITE = [
+   ["50 U.S.C. § 1701", "50 U.S.C. § 1701-1708 — IEEPA",                          "TECH TRANSFER",   "TITLE 50 — WAR & NATIONAL DEFENSE"],
+   ["50 U.S.C. § 1801", "50 U.S.C. § 1801 et seq. — FISA",                        "FIS OPERATION",   "TITLE 50 — WAR & NATIONAL DEFENSE"],
+   ["50 U.S.C. § 4565", "50 U.S.C. § 4565 — CFIUS",                               "TECH TRANSFER",   "TITLE 50 — WAR & NATIONAL DEFENSE"],
+   ["50 U.S.C. § 4819", "50 U.S.C. § 4819 — Export Control Reform Act (ECRA)",    "TECH TRANSFER",   "TITLE 50 — WAR & NATIONAL DEFENSE"],
+ 
+   // Title 31 — BSA / Financial
+   ["31 U.S.C. § 5313", "31 U.S.C. § 5313 — CTR Reporting",                       "CI",              "TITLE 31 — BSA / FINANCIAL"],
+   ["31 U.S.C. § 5316", "31 U.S.C. § 5316 — CMIR Reporting",                      "CI",              "TITLE 31 — BSA / FINANCIAL"],
+   ["31 U.S.C. § 5318", "31 U.S.C. § 5318 — BSA Compliance / SAR",                "CI",              "TITLE 31 — BSA / FINANCIAL"],
+   ["31 U.S.C. § 5322", "31 U.S.C. § 5322 — BSA Criminal Penalties",              "CI",              "TITLE 31 — BSA / FINANCIAL"],
+   ["31 U.S.C. § 5324", "31 U.S.C. § 5324 — Structuring",                         "CI",              "TITLE 31 — BSA / FINANCIAL"],
+   ["31 U.S.C. § 5331", "31 U.S.C. § 5331 — Form 8300 Reporting",                 "CI",              "TITLE 31 — BSA / FINANCIAL"],
+   ["31 U.S.C. § 5332", "31 U.S.C. § 5332 — Bulk Cash Smuggling",                 "CI",              "TITLE 31 — BSA / FINANCIAL"],
+ 
+   // Title 8 — Immigration
+   ["8 U.S.C. § 1324",  "8 U.S.C. § 1324 — Bringing in/Harboring Aliens",         "CI",              "TITLE 8 — IMMIGRATION"],
+   ["8 U.S.C. § 1325",  "8 U.S.C. § 1325 — Improper Entry",                       "CI",              "TITLE 8 — IMMIGRATION"],
+   ["8 U.S.C. § 1326",  "8 U.S.C. § 1326 — Illegal Reentry",                      "CI",              "TITLE 8 — IMMIGRATION"],
+   ["8 U.S.C. § 1424",  "8 U.S.C. § 1424 — Naturalization Prohibitions",          "CI",              "TITLE 8 — IMMIGRATION"],
+ 
+   // Title 26 — Tax
+   ["26 U.S.C. § 7201", "26 U.S.C. § 7201 — Tax Evasion",                         "CI",              "TITLE 26 — TAX"],
+   ["26 U.S.C. § 7206", "26 U.S.C. § 7206 — Fraud and False Statements (Tax)",    "CI",              "TITLE 26 — TAX"],
+ ];
+ 
++const threatEvidence = (threat) => {
++  const map = {
++    "ESPIONAGE": "Classification records, FISA collection summaries, foreign contact attribution, damage assessment memo",
++    "FIS OPERATION": "Foreign direction/tasking communications, FARA records check, source reporting, surveillance logs",
++    "CYBER CI": "SIEM/EDR logs, forensic images, attribution package, malware/toolmark analysis",
++    "FIS CONSPIRACY": "Conspiracy timeline, co-conspirator communications, financial links, overt act documentation",
++    "IDENTITY EXPOSURE": "Employee access logs, insider-threat indicators, identity compromise indicators, witness interviews",
++    "TECH TRANSFER": "Export documentation, end-user checks, BIS/OFAC coordination records, shipping and procurement records",
++    "TRANSNATIONAL THREAT": "Cross-border travel records, foreign remittance trails, liaison reporting, customs records",
++    "CI": "Predication records, communications data, interview summaries, financial and travel records",
++  };
++  return map[threat] || map.CI;
++};
++const buildTemplateElements = (statute, label, threat) => ([
++  { name: "ELEMENT 1 — Predication & Statutory Nexus", color: "#ef4444", steps: [
++    { text: `Document predication facts specifically tied to ${label}`, evidence: `Opening EC, referral package, source reporting, legal review notes for ${statute}`, day: 1, phase: "IMMEDIATE" },
++    { text: "Identify subject, co-subjects, and relevant entities tied to the statute", evidence: "Identity records, link analysis, corporate records, communication metadata", day: 1, phase: "IMMEDIATE" },
++  ]},
++  { name: "ELEMENT 2 — Conduct Evidence", color: "#f97316", steps: [
++    { text: "Establish prohibited acts and timeline under the charged statute", evidence: "Chronology, surveillance logs, seized documents, digital artifacts", day: 2, phase: "IMMEDIATE" },
++    { text: "Preserve corroborating documentary and digital evidence", evidence: "Forensic images, warrants/returns, chain-of-custody logs, subpoena returns", day: 3, phase: "IMMEDIATE" },
++  ]},
++  { name: "ELEMENT 3 — Intent / Knowledge", color: "#eab308", steps: [
++    { text: "Develop intent/knowledge indicators for willful statutory violation", evidence: "Internal communications, training acknowledgments, concealment behavior, admissions", day: 5, phase: "WEEK 1" },
++    { text: "Assess motive and benefit to subject or foreign actor", evidence: threatEvidence(threat), day: 7, phase: "WEEK 1" },
++  ]},
++  { name: "ELEMENT 4 — Charging Readiness", color: "#22c55e", steps: [
++    { text: "Map each statutory element to developed evidence and identify gaps", evidence: "Element matrix, gap analysis memo, corroboration checklist", day: 10, phase: "WEEK 2" },
++    { text: "Prepare supervisor/AUSA briefing package and charging recommendation", evidence: "Integrated case summary, evidence index, witness list, legal theory memo", day: 14, phase: "WEEK 2" },
++  ]},
++]);
++
+ // Merge lite statutes into the main database
+ CI_STATUTES_LITE.forEach(([key, label, threat, group]) => {
+   if (!CI_STATUTES[key]) {
+-    CI_STATUTES[key] = { label, threat, group, elements: null }; // null => use buildCustomElements
++    CI_STATUTES[key] = { label, threat, group, elements: buildTemplateElements(key, label, threat) };
+   }
+ });
+ 
+ // Group order (preserves curated order in the dropdown)
+ const GROUP_ORDER = [
+   "ESPIONAGE & NATIONAL DEFENSE (CH. 37)",
+   "FOREIGN RELATIONS & AGENTS (CH. 45)",
+   "SABOTAGE (CH. 105)",
+   "TREASON & SEDITION (CH. 115)",
+   "ECONOMIC ESPIONAGE & TRADE SECRETS (CH. 90)",
+   "TERRORISM (CH. 113B)",
+   "MONEY LAUNDERING & FINANCIAL",
+   "FRAUD & FALSE STATEMENTS",
+   "OBSTRUCTION",
+   "CONSPIRACY & INCHOATE",
+   "SMUGGLING & BORDER",
+   "RICO",
+   "TITLE 22 — FOREIGN RELATIONS",
+   "TITLE 50 — WAR & NATIONAL DEFENSE",
+   "TITLE 31 — BSA / FINANCIAL",
+   "TITLE 8 — IMMIGRATION",
+   "TITLE 26 — TAX",
+ ];
+ 
+ // ── Universal fallback element set for any custom statute ─────────────────────
+@@ -636,50 +668,56 @@ function App() {
+     const nc = { ...form, violations, id, threat, aiAnalysis:null };
+     delete nc.customViolation;
+     const nt = buildTasks(violations);
+     const newCases = [...cases, nc];
+     const newTasks = { ...caseTasks, [id]: nt };
+     setCases(newCases); setCaseTasks(newTasks); persist(newCases, newTasks);
+     setForm({ name:"", subject:"", violations:[], customViolation:"", priority:"HIGH", sol:"", source:"", status:"ACTIVE", notes:"", tier:"PRELIMINARY" });
+     setShowForm(false);
+     setSelId(id); setBriefId(id); setAiCaseId(id);
+     setTab(1);
+   };
+ 
+   const deleteCase = (id) => {
+     const newCases = cases.filter(c=>c.id!==id);
+     const newTasks = {...caseTasks}; delete newTasks[id];
+     setCases(newCases); setCaseTasks(newTasks); persist(newCases,newTasks);
+     if(selId===id) setSelId(newCases[0]?.id||null);
+     if(briefId===id) setBriefId(newCases[0]?.id||null);
+     if(aiCaseId===id) setAiCaseId(newCases[0]?.id||null);
+   };
+ 
+   const toggle = (caseId, taskId) => {
+     const newTasks = {...caseTasks,[caseId]:caseTasks[caseId].map(t=>t.id===taskId?{...t,done:!t.done}:t)};
+     setCaseTasks(newTasks); persist(cases,newTasks);
+   };
++  const setPhaseCompletion = (caseId, phaseName, doneValue) => {
++    const existing = caseTasks[caseId] || [];
++    const updated = existing.map(t => t.phase === phaseName ? { ...t, done: doneValue } : t);
++    const newTasks = { ...caseTasks, [caseId]: updated };
++    setCaseTasks(newTasks); persist(cases, newTasks);
++  };
+ 
+   const updateCaseTier = (caseId, tier) => {
+     const newCases = cases.map(c => c.id === caseId ? { ...c, tier } : c);
+     setCases(newCases); persist(newCases, caseTasks);
+   };
+ 
+   const runAI = async () => {
+     const c = cases.find(x => x.id === aiCaseId);
+     if (!c) return;
+     setAiLoading(true); setAiError(null);
+     try {
+       const tasks = caseTasks[c.id] || [];
+       const completedSteps = tasks.filter(t => t.done);
+       const openSteps = tasks.filter(t => !t.done);
+       const result = await generateAIAnalysis({
+         tier: c.tier || "PRELIMINARY",
+         violations: c.violations || [],
+         subject: c.subject,
+         source: c.source,
+         notes: c.notes,
+         completedSteps, openSteps,
+       });
+       const newCases = cases.map(x => x.id === c.id ? { ...x, aiAnalysis: { generatedAt: new Date().toISOString(), result } } : x);
+       setCases(newCases); persist(newCases, caseTasks);
+     } catch (err) {
+@@ -959,50 +997,54 @@ function App() {
+                       <div style={{fontSize:8,color:"#1e3a5f"}}>{done}/{sTasks.length} COMPLETE</div>
+                     </div>
+                   </div>
+                   <div style={{height:6,background:"#0a1525",borderRadius:3}}>
+                     <div style={{width:`${pct}%`,height:"100%",background:pct===100?"linear-gradient(90deg,#22c55e,#16a34a)":"linear-gradient(90deg,#2563eb,#1d4ed8)",borderRadius:3,transition:"width .5s"}}/>
+                   </div>
+                 </div>
+ 
+                 <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+                   {PHASES.map(ph=>{
+                     const phT=sTasks.filter(t=>t.phase===ph);
+                     const phD=phT.filter(t=>t.done).length;
+                     const allDone=phT.length>0&&phD===phT.length;
+                     return (
+                       <button key={ph} onClick={()=>setPhase(ph)} style={{...C.phBtn,...(phase===ph?(allDone?C.phDone:C.phOn):{})}}>
+                         {allDone&&<span style={{color:"#22c55e",marginRight:3}}>✓</span>}
+                         {ph}<span style={C.phCnt}>{phD}/{phT.length}</span>
+                       </button>
+                     );
+                   })}
+                 </div>
+ 
+                 <div style={{fontSize:8,color:"#1e3a5f",letterSpacing:2,marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+                   <span>// {PHASE_RANGE[phase]}</span><span style={{flex:1,borderTop:"1px solid #0a1525"}}/>
+                 </div>
++                <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
++                  <button onClick={()=>setPhaseCompletion(selId,phase,true)} style={{...C.btnP,padding:"6px 10px",fontSize:8}}>MARK PHASE COMPLETE</button>
++                  <button onClick={()=>setPhaseCompletion(selId,phase,false)} style={{...C.btnG,padding:"6px 10px",fontSize:8}}>RESET PHASE</button>
++                </div>
+ 
+                 {Object.entries(elGroups).map(([elName,steps])=>{
+                   const elDone=steps.filter(t=>t.done).length;
+                   const elPct=Math.round((elDone/steps.length)*100);
+                   const isCollapsed=collapsed[elName];
+                   const elColor=steps[0]?.elementColor||"#2563eb";
+                   return (
+                     <div key={elName} style={{...C.elGroup,borderLeftColor:elColor}}>
+                       <div onClick={()=>setCollapsed(p=>({...p,[elName]:!p[elName]}))} style={C.elHdr}>
+                         <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
+                           <div style={{width:30,height:30,borderRadius:4,background:elPct===100?"#0a2018":"#0a1525",border:`1px solid ${elPct===100?"#22c55e":elColor+"55"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:elPct===100?13:11,color:elPct===100?"#22c55e":elColor,flexShrink:0}}>
+                             {elPct===100?"✓":"⬡"}
+                           </div>
+                           <div>
+                             <div style={{fontSize:10,fontWeight:"bold",color:"#b8d0e8",letterSpacing:1}}>{elName}</div>
+                             <div style={{fontSize:8,color:"#1e3a5f",marginTop:2}}>{elDone}/{steps.length} SUB-STEPS · {elPct}% PROVEN</div>
+                           </div>
+                         </div>
+                         <div style={{display:"flex",alignItems:"center",gap:10}}>
+                           <div style={{width:70,height:3,background:"#0a1525",borderRadius:2}}><div style={{width:`${elPct}%`,height:"100%",background:elPct===100?"#22c55e":elColor,borderRadius:2}}/></div>
+                           <span style={{fontSize:11,color:"#1e3a5f"}}>{isCollapsed?"▸":"▾"}</span>
+                         </div>
+                       </div>
+                       {!isCollapsed && steps.map((step,si)=>(
+                         <div key={step.id}>
