@@ -527,6 +527,41 @@ const SEED = [
 ];
 
 // ── AI Analysis ───────────────────────────────────────────────────────────────
+function buildOfflineAnalysis({ tier, violations, subject, source, notes, completedSteps, openSteps }) {
+  const v = (violations && violations.length ? violations : ["Unknown statute"]);
+  const primary = v[0];
+  return {
+    tier_assessment: `${tier || "PRELIMINARY"} appears supportable based on current predication. Validate with CDC/SSA and escalate if new foreign nexus or sensitive techniques become necessary.`,
+    next_steps: [
+      { priority: "HIGH", action: `Close critical evidence gaps for ${primary}`, rationale: "Charging viability depends on element-level corroboration.", approval_required: null },
+      { priority: "MEDIUM", action: "Sequence witness + digital/records collection", rationale: "Parallel collection shortens time-to-assessment.", approval_required: null },
+    ],
+    authorized_methods: [
+      { method: "Records checks and open-source review", tier_appropriate: true, approval_required: null, notes: "Baseline method for all tiers." },
+      { method: "Subject/witness interviews (non-custodial)", tier_appropriate: true, approval_required: "Supervisor coordination", notes: "Document advisements and FD-302 quality." },
+    ],
+    collection_gaps: [
+      { gap: "Element-by-element evidence mapping not complete", why_it_matters: "Weakest element drives declination risk.", how_to_close: "Use checklist + evidence matrix for each statute." },
+      { gap: "Intent/willfulness corroboration may be partial", why_it_matters: "Mens rea is often dispositive.", how_to_close: "Prior knowledge, concealment behavior, motive/benefit records." },
+    ],
+    coordination: [
+      { partner: "SSA / CDC", purpose: "Confirm tier scope and approval requirements", timing: "Immediate" },
+      { partner: "AUSA / USAO", purpose: "Pre-charge element sufficiency review", timing: "After gap closure" },
+    ],
+    escalation_triggers: [
+      "New evidence of foreign government direction/control",
+      "Need for sensitive techniques requiring elevated approvals",
+      "Imminent harm or rapid exfiltration indicators",
+    ],
+    elements_checklist: [
+      { statute: primary, element: "Predication & subject nexus", evidence_needed: "Opening facts, source reliability, identity linkage", status: completedSteps.length ? "PARTIAL" : "GAP" },
+      { statute: primary, element: "Prohibited conduct", evidence_needed: "Timeline + documentary/digital corroboration", status: completedSteps.length > openSteps.length ? "PARTIAL" : "GAP" },
+      { statute: primary, element: "Intent/knowledge", evidence_needed: "Communications, admissions, motive/benefit records", status: "GAP" },
+    ],
+    _offline_note: `Offline fallback used for ${subject || "subject"} (${source || "unknown source"}).`,
+  };
+}
+
 async function generateAIAnalysis({ tier, violations, subject, source, notes, completedSteps, openSteps }) {
   const statuteList = violations.map(v => `${v} — ${CI_STATUTES[v]?.label || v}`).join("\n");
   const completedSummary = completedSteps.slice(0, 12).map(s => `✓ ${s.elementName}: ${s.text}`).join("\n") || "(none recorded)";
@@ -575,20 +610,25 @@ ${openSummary}
 
 Produce the JSON analysis now.`;
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4000,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }],
-    }),
-  });
+  let response;
+  try {
+    response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4000,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+      }),
+    });
+  } catch (_) {
+    return buildOfflineAnalysis({ tier, violations, subject, source, notes, completedSteps, openSteps });
+  }
 
   if (!response.ok) {
     const errText = await response.text().catch(()=>"");
-    throw new Error(`API ${response.status}: ${errText.slice(0,200)}`);
+    return buildOfflineAnalysis({ tier, violations, subject, source, notes, completedSteps, openSteps });
   }
 
   const data = await response.json();
@@ -602,8 +642,12 @@ Produce the JSON analysis now.`;
   // Find first { and last }
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("No JSON object found in response");
-  return JSON.parse(cleaned.slice(start, end + 1));
+  if (start === -1 || end === -1) return buildOfflineAnalysis({ tier, violations, subject, source, notes, completedSteps, openSteps });
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch (_) {
+    return buildOfflineAnalysis({ tier, violations, subject, source, notes, completedSteps, openSteps });
+  }
 }
 
 function App() {
